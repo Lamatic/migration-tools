@@ -1,0 +1,22 @@
+{
+  "flows": {
+    "migration": {
+      "name": "n8n Migration Pipeline",
+      "workflowId": "migration-pipeline",
+      "description": "Converts n8n workflows to Lamatic format",
+      "mode": "sync",
+      "expectedOutput": "lamaticWorkflow",
+      "inputSchema": {
+        "n8nWorkflow": "object"
+      },
+      "outputSchema": {
+        "lamaticWorkflow": "object",
+        "migrationReport": "object"
+      }
+    }
+  },
+  "api": {
+    "endpoint": "https://api.lamatic.ai/graphql",
+    "projectId": "migration-tool"
+  }
+}

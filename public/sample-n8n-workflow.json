@@ -1,0 +1,230 @@
+{
+  "name": "My workflow 2",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## This is a POST Webhook endpoint\n\nMake sure to configure this webhook using a https:// wraper and dont use the default http://localhost:5678 as that will not be recognized by your slack webhook\n\n\nOnce the data has been sent to your webhook, the next step will be passing it via an AI Agent to process data based on the queries we pass to our agent.\n\nTo have some sort of a memory, be sure to set the slack token to the memory node. This way you can refer to other chats from the history.\n\nThe final message is relayed back to slack as a new message. Since we can not wait longer than 3000 ms for slack response, we will create anew message with reference to the input we passed.\n\nWe can advance this using the tools or data sources for it to be more custom tailored for your company.\n",
+        "height": 490.24769122000794,
+        "width": 407.6388140161723
+      },
+      "id": "ce407a8f-1ff4-41db-b4cd-5de94b0ed03d",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -464,
+        64
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "### Conversation history is stored in memory using the body token as the chatsession id",
+        "height": 233,
+        "width": 221.73584905660368,
+        "color": 4
+      },
+      "id": "ecfe4120-040d-47e8-a9a3-51c3b1c782bc",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        352,
+        384
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "### The chat LLM to process the prompt. Use any AI model here",
+        "height": 233,
+        "width": 217.47708894878716,
+        "color": 4
+      },
+      "id": "c3569763-9c41-47e9-bdf4-316b9f745d2e",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        112,
+        384
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-1.5-flash-latest",
+        "options": {}
+      },
+      "id": "f694d5ae-a778-4e84-8bdd-060bc31ac0e6",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "position": [
+        192,
+        464
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Webhook to receive message').item.json.body.token }}",
+        "contextWindowLength": 10
+      },
+      "id": "9ee1d3fc-34d9-4548-954e-4da73497980e",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "position": [
+        432,
+        480
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "content": "### Send the response from AI back to slack channel\n",
+        "height": 236.66152029520293,
+        "width": 223.7196765498655,
+        "color": 4
+      },
+      "id": "6d42d4cc-d6a5-4eaa-936e-3d98ede51260",
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        640,
+        80
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Receive a POST webhook, process data and return response",
+        "height": 340.09703504043114,
+        "width": 561.423180592992,
+        "color": 4
+      },
+      "id": "31f09716-3002-4e75-8b1e-9446b7bb68e1",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Webhook to receive message').item.json.body.channel_id }}"
+        },
+        "text": "={{ $('Webhook to receive message').item.json.body.user_name }}: {{ $('Webhook to receive message').item.json.body.text }}\n\nEffibotics Bot: {{ $json.output.removeMarkdown() }} ",
+        "otherOptions": {
+          "includeLinkToWorkflow": false,
+          "mrkdwn": true,
+          "sendAsUser": "Effibotics Bot"
+        }
+      },
+      "id": "9b71e9c5-b6b8-497d-bf77-f21207185a5b",
+      "name": "Send response back to slack channel",
+      "type": "n8n-nodes-base.slack",
+      "position": [
+        704,
+        144
+      ],
+      "typeVersion": 2.1,
+      "webhookId": "c3a0b524-b804-4ce6-8679-f5739d67ab5e"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack-bot",
+        "options": {
+          "responseData": ""
+        }
+      },
+      "id": "20d928f7-2fdd-42a4-b902-86995b88b241",
+      "name": "Webhook to receive message",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        48,
+        144
+      ],
+      "webhookId": "28b84545-96aa-42f5-990b-aa8783a320ca",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.body.text }}",
+        "options": {
+          "systemMessage": "You are Effibotics AI personal assistant. Your task will be to provide helpful assistance and advice related to automation and such tasks. "
+        }
+      },
+      "id": "77a1ff05-8642-4c4f-b00f-5dd09d7cf97c",
+      "name": "Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        272,
+        144
+      ],
+      "typeVersion": 1
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Agent": {
+      "main": [
+        [
+          {
+            "node": "Send response back to slack channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook to receive message": {
+      "main": [
+        [
+          {
+            "node": "Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1a4e793e-458d-49e8-bb12-cac7205993df",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "78bc384d799857600e89fc943511bc02174758a56fee6b28a2915d33fe96b7df"
+  },
+  "id": "IVwFzOtrETyw3ydF",
+  "tags": []
+}

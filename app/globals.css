@@ -1,0 +1,548 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 72% 51%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 72% 51%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 0 0% 8%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 72% 51%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 0 72% 51%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Lamatic Typography System - Compact for Viewport */
+  h1 {
+    font-weight: 500;
+    font-size: 44px;
+    line-height: 48px;
+    color: rgb(30, 30, 30);
+  }
+  
+  .dark h1 {
+    color: rgb(243, 243, 243);
+  }
+  
+  h2, h3 {
+    font-weight: 600;
+  }
+  
+  p, .description {
+    font-weight: 300;
+    font-size: 18px;
+    line-height: 26px;
+    color: rgb(128, 128, 128);
+  }
+  
+  .label, .small-text {
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 21px;
+  }
+  
+  .primary-text {
+    color: rgb(243, 55, 54);
+  }
+}
+
+/* ===== SMOOTH ANIMATIONS ===== */
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes checkDraw {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes successPop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-slide-down {
+  animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-slide-up {
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-check {
+  animation: checkDraw 0.5s ease-out forwards;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+}
+
+.animate-success-pop {
+  animation: successPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-pulse-slow {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ===== MICRO-INTERACTIONS ===== */
+
+/* Ultra-smooth transitions */
+* {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Button hover - fast and smooth */
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.dark button:not(:disabled):hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+button:not(:disabled):active {
+  transform: translateY(0);
+}
+
+/* Smooth focus */
+*:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+/* Smooth selection */
+::selection {
+  background: hsl(var(--primary) / 0.2);
+}
+
+/* Modern Aesthetic Scrollbar - Hidden by default */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: hsl(var(--primary) / 0.2) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+  transition: background 0.3s ease;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.4);
+}
+
+/* Modal scrollbar - always slightly visible */
+.modal-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--border) / 0.3);
+}
+
+.modal-scroll:hover::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.3);
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Loading skeleton */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted-foreground) / 0.1) 50%,
+    hsl(var(--muted)) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Drop zone hover */
+.drop-zone {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drop-zone:hover {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.05);
+  transform: scale(1.01);
+}
+
+.drop-zone.active {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.1);
+  transform: scale(1.02);
+  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.1);
+}
+
+/* PRIMARY Card (Upload - Subtle Modern Design) */
+.migration-card-primary {
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  background: hsl(var(--card));
+  border: 1.5px solid rgba(243, 55, 54, 0.12);
+  overflow: hidden;
+}
+
+/* Subtle shimmer effect */
+.migration-card-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(243, 55, 54, 0.05),
+    transparent
+  );
+  transition: left 0.6s ease;
+}
+
+.migration-card-primary:hover::before {
+  left: 100%;
+}
+
+/* Soft border glow on hover */
+.migration-card-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(135deg, 
+    rgba(243, 55, 54, 0.15) 0%,
+    rgba(243, 55, 54, 0.25) 50%,
+    rgba(243, 55, 54, 0.1) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.migration-card-primary:hover::after {
+  opacity: 1;
+}
+
+.migration-card-primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 
+    0 12px 32px -8px rgba(243, 55, 54, 0.15),
+    0 0 0 1px rgba(243, 55, 54, 0.1);
+  border-color: rgba(243, 55, 54, 0.2);
+}
+
+.migration-card-primary:active {
+  transform: translateY(-1px);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* SECONDARY Card (Bulk Migration - Subtle) */
+.migration-card-secondary {
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: hsl(var(--card));
+  border: 1.5px solid hsl(var(--border));
+  overflow: hidden;
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.migration-card-secondary:hover {
+  opacity: 0.75;
+  border-color: hsl(var(--border));
+  transform: translateY(-1px);
+}
+
+/* Card appearance animation */
+@keyframes cardAppear {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.card-appear {
+  animation: cardAppear 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Gradient rotation animation */
+@keyframes gradient-rotate {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Icon container animation - Subtle */
+.icon-container {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 10;
+}
+
+.migration-card-primary:hover .icon-container {
+  transform: scale(1.08);
+}
+
+.migration-card-primary:active .icon-container {
+  transform: scale(1.03);
+}
+
+.migration-card-secondary .icon-container {
+  transform: scale(1);
+}
+
+/* Arrow slide animation */
+.arrow-slide {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.migration-card:hover .arrow-slide {
+  transform: translateX(4px);
+}
+
+/* Feature card subtle hover */
+.feature-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.feature-card:hover {
+  transform: translateY(-2px);
+}
+
+.feature-card:hover .icon-container {
+  transform: scale(1.1);
+}
+
+/* Migration report animations */
+@keyframes stat-count {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stat-card {
+  animation: stat-count 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* Smooth badge appearance */
+.badge-appear {
+  animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* Button shine effect */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-shine::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.btn-shine:hover::before {
+  left: 100%;
+}
+
+/* Migration arrow animation */
+@keyframes arrowMove {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+}
+
+.arrow-animate {
+  animation: arrowMove 1.5s ease-in-out infinite;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(0 72% 60%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Success modal backdrop */
+.modal-backdrop {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Coming soon badge pulse */
+@keyframes badgePulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.badge-pulse {
+  animation: badgePulse 2s ease-in-out infinite;
+}
