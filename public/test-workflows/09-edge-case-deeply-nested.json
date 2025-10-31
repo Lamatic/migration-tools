@@ -1,0 +1,123 @@
+{
+  "name": "Edge Case - Deeply Nested Parameters",
+  "nodes": [
+    {
+      "id": "webhook-1",
+      "name": "Complex Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "complex-webhook",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "complex/nested/path",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-Custom-Header",
+                "value": "CustomValue"
+              }
+            ]
+          },
+          "rawBody": false,
+          "allowedOrigins": "*"
+        }
+      }
+    },
+    {
+      "id": "set-1",
+      "name": "Deeply Nested Set",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "user.profile.firstName",
+              "value": "={{$json.data.user.profile.firstName}}"
+            },
+            {
+              "name": "user.profile.lastName",
+              "value": "={{$json.data.user.profile.lastName}}"
+            },
+            {
+              "name": "user.contact.email.primary",
+              "value": "={{$json.data.user.contact.email.primary}}"
+            },
+            {
+              "name": "metadata.source.system",
+              "value": "n8n-webhook"
+            },
+            {
+              "name": "metadata.timestamp",
+              "value": "={{$now.toISO()}}"
+            }
+          ],
+          "number": [
+            {
+              "name": "user.stats.loginCount",
+              "value": "={{$json.data.user.stats.loginCount || 0}}"
+            }
+          ],
+          "boolean": [
+            {
+              "name": "user.preferences.emailNotifications",
+              "value": "={{$json.data.user.preferences.emailNotifications !== false}}"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": true,
+          "include": "selected"
+        }
+      }
+    },
+    {
+      "id": "code-1",
+      "name": "Complex Transformation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Complex nested data transformation\nconst data = $input.item.json;\n\n// Deep merge function\nconst deepMerge = (target, source) => {\n  for (const key in source) {\n    if (source[key] instanceof Object && key in target) {\n      Object.assign(source[key], deepMerge(target[key], source[key]));\n    }\n  }\n  return Object.assign(target || {}, source);\n};\n\n// Create complex nested structure\nconst result = {\n  user: {\n    profile: {\n      name: {\n        first: data['user.profile.firstName'],\n        last: data['user.profile.lastName'],\n        full: `${data['user.profile.firstName']} ${data['user.profile.lastName']}`\n      },\n      contact: {\n        email: {\n          primary: data['user.contact.email.primary'],\n          verified: true\n        }\n      },\n      stats: {\n        logins: data['user.stats.loginCount'],\n        lastLogin: new Date().toISOString()\n      },\n      preferences: {\n        notifications: {\n          email: data['user.preferences.emailNotifications'],\n          push: false\n        }\n      }\n    },\n    metadata: {\n      source: {\n        system: data['metadata.source.system'],\n        version: '1.0'\n      },\n      timestamps: {\n        created: data['metadata.timestamp'],\n        updated: new Date().toISOString()\n      }\n    }\n  }\n};\n\nreturn { json: result };"
+      }
+    }
+  ],
+  "connections": {
+    "Complex Webhook": {
+      "main": [
+        [
+          {
+            "node": "Deeply Nested Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deeply Nested Set": {
+      "main": [
+        [
+          {
+            "node": "Complex Transformation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "id": "9"
+}
+
+
+
+

@@ -165,7 +165,7 @@ export class NodeMapper {
     // Set Data Node Mapping
     this.addMapping({
       n8nType: 'n8n-nodes-base.set',
-      lamaticType: 'transformNode',
+      lamaticType: 'LLMNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'values', lamaticParameter: 'fields', required: true },
@@ -179,7 +179,7 @@ export class NodeMapper {
     // Merge Node Mapping
     this.addMapping({
       n8nType: 'n8n-nodes-base.merge',
-      lamaticType: 'mergeNode',
+      lamaticType: 'LLMNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'mode', lamaticParameter: 'mode', required: true, defaultValue: 'append' },
@@ -193,7 +193,7 @@ export class NodeMapper {
     // Switch Node Mapping
     this.addMapping({
       n8nType: 'n8n-nodes-base.switch',
-      lamaticType: 'switchNode',
+      lamaticType: 'branchNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'mode', lamaticParameter: 'mode', required: true, defaultValue: 'rules' },
@@ -230,7 +230,7 @@ export class NodeMapper {
     // Google Sheets Node Mapping
     this.addMapping({
       n8nType: 'n8n-nodes-base.googleSheets',
-      lamaticType: 'googleSheetsNode',
+      lamaticType: 'LLMNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'append' },
@@ -249,7 +249,7 @@ export class NodeMapper {
     // Airtable Node Mapping
     this.addMapping({
       n8nType: 'n8n-nodes-base.airtable',
-      lamaticType: 'airtableNode',
+      lamaticType: 'LLMNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'create' },
@@ -286,7 +286,7 @@ export class NodeMapper {
     // Discord Node Mapping
     this.addMapping({
       n8nType: 'n8n-nodes-base.discord',
-      lamaticType: 'discordNode',
+      lamaticType: 'LLMNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'sendMessage' },
@@ -304,7 +304,7 @@ export class NodeMapper {
     // Notion Node Mapping
     this.addMapping({
       n8nType: 'n8n-nodes-base.notion',
-      lamaticType: 'notionNode',
+      lamaticType: 'LLMNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'create' },
@@ -491,7 +491,7 @@ export class NodeMapper {
             credentials: '',
             action: 'postMessage',
             channel: '',
-            message: this.getNestedValue(n8nNode.parameters, 'text') || '={{ $(\'Webhook to receive message\').item.json.body.user_name }}: {{ $(\'Webhook to receive message\').item.json.body.text }}\n\nEffibotics Bot: {{ $json.output.removeMarkdown() }} ',
+            message: this.getNestedValue(n8nNode.parameters, 'text') || '={{ $json.body.user_name }}: {{ $json.body.text }}\n\nEffibotics Bot: {{ $json.output.removeMarkdown() }} ',
             thread_ts: '',
             username: '',
             icon_emoji: '',

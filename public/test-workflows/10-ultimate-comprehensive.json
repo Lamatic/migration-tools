@@ -1,0 +1,692 @@
+{
+  "name": "Ultimate Comprehensive Test - All 19 Nodes",
+  "nodes": [
+    {
+      "id": "webhook-1",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 600],
+      "webhookId": "ultimate-test",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ultimate-test",
+        "responseMode": "lastNode"
+      }
+    },
+    {
+      "id": "manual-1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 700],
+      "parameters": {}
+    },
+    {
+      "id": "schedule-1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 800],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merge-triggers",
+      "name": "Merge All Triggers",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [450, 700],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "http-1",
+      "name": "HTTP Request - External API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 700],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.example.com/v1/data",
+        "authentication": "genericCredentialType",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "code-1",
+      "name": "Code - Data Processing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [850, 700],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const data = $input.item.json;\nreturn {\n  json: {\n    ...data,\n    processed: true,\n    processedAt: new Date().toISOString(),\n    score: Math.random() * 100\n  }\n};"
+      }
+    },
+    {
+      "id": "if-1",
+      "name": "If - Score Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1050, 700],
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.score}}",
+              "operation": "larger",
+              "value2": 50
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "switch-1",
+      "name": "Switch - Priority Routing",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [1250, 600],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "rules": [
+            {
+              "operation": "largerEqual",
+              "value1": "={{$json.score}}",
+              "value2": 80,
+              "output": 0
+            },
+            {
+              "operation": "largerEqual",
+              "value1": "={{$json.score}}",
+              "value2": 60,
+              "output": 1
+            }
+          ]
+        },
+        "fallbackOutput": 2
+      }
+    },
+    {
+      "id": "set-high",
+      "name": "Set - High Priority",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1450, 500],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "priority",
+              "value": "high"
+            },
+            {
+              "name": "tier",
+              "value": "platinum"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "set-medium",
+      "name": "Set - Medium Priority",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1450, 600],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "priority",
+              "value": "medium"
+            },
+            {
+              "name": "tier",
+              "value": "gold"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "set-low",
+      "name": "Set - Low Priority",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1450, 700],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "priority",
+              "value": "low"
+            },
+            {
+              "name": "tier",
+              "value": "silver"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merge-priorities",
+      "name": "Merge Priorities",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [1650, 600],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "gmail-1",
+      "name": "Gmail - Email Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [1850, 400],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "admin@example.com",
+        "subject": "Priority Alert - {{$json.priority}}",
+        "message": "Item processed with {{$json.priority}} priority\nTier: {{$json.tier}}\nScore: {{$json.score}}"
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-cred-1",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "id": "slack-1",
+      "name": "Slack - Team Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [1850, 500],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "C_NOTIFICATIONS",
+        "text": "🔔 {{$json.priority}} priority item processed\nTier: {{$json.tier}}\nScore: {{$json.score}}",
+        "markdown": true
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "slack-cred-1",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "id": "teams-1",
+      "name": "Microsoft Teams - Manager Alert",
+      "type": "n8n-nodes-base.microsoftTeams",
+      "typeVersion": 1,
+      "position": [1850, 600],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channelId": "19:manager-channel@thread.tacv2",
+        "messageText": "Manager Alert: {{$json.priority}} priority\nTier: {{$json.tier}}"
+      },
+      "credentials": {
+        "microsoftTeamsOAuth2": {
+          "id": "teams-cred-1",
+          "name": "Microsoft Teams OAuth2"
+        }
+      }
+    },
+    {
+      "id": "discord-1",
+      "name": "Discord - Community Notification",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 1,
+      "position": [1850, 700],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "channelId": "123456789012345678",
+        "content": "🎯 New {{$json.priority}} priority alert!"
+      },
+      "credentials": {
+        "discordBotApi": {
+          "id": "discord-cred-1",
+          "name": "Discord Bot API"
+        }
+      }
+    },
+    {
+      "id": "sheets-1",
+      "name": "Google Sheets - Log Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 2,
+      "position": [2050, 500],
+      "parameters": {
+        "operation": "append",
+        "sheetId": "1abc-def-ghi",
+        "range": "Logs!A:E",
+        "options": {
+          "valueInputMode": "USER_ENTERED"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2": {
+          "id": "sheets-cred-1",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "airtable-1",
+      "name": "Airtable - Create Record",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 1,
+      "position": [2050, 600],
+      "parameters": {
+        "operation": "create",
+        "application": "appABC123",
+        "table": "ProcessedItems",
+        "fields": {
+          "Priority": "={{$json.priority}}",
+          "Tier": "={{$json.tier}}",
+          "Score": "={{$json.score}}"
+        }
+      },
+      "credentials": {
+        "airtableApi": {
+          "id": "airtable-cred-1",
+          "name": "Airtable API"
+        }
+      }
+    },
+    {
+      "id": "notion-1",
+      "name": "Notion - Update Documentation",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 1,
+      "position": [2050, 700],
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "create",
+        "databaseId": "notion-db-123",
+        "properties": {
+          "Name": "Process Log {{$json.priority}}",
+          "Priority": "={{$json.priority}}",
+          "Score": "={{$json.score}}"
+        }
+      },
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred-1",
+          "name": "Notion API"
+        }
+      }
+    },
+    {
+      "id": "memory-1",
+      "name": "AI Memory Buffer",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1,
+      "position": [2250, 500],
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "ultimate-test-session",
+        "contextWindowLength": 5
+      }
+    },
+    {
+      "id": "gemini-1",
+      "name": "Google Gemini AI",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [2250, 600],
+      "parameters": {
+        "modelName": "gemini-pro",
+        "options": {
+          "temperature": 0.8,
+          "maxOutputTokens": 1024
+        }
+      },
+      "credentials": {
+        "googleGeminiOAuth2": {
+          "id": "gemini-cred-1",
+          "name": "Google Gemini OAuth2"
+        }
+      }
+    },
+    {
+      "id": "agent-1",
+      "name": "AI Agent - Summary Generator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [2450, 600],
+      "parameters": {
+        "text": "Generate a summary for: Priority={{$json.priority}}, Tier={{$json.tier}}, Score={{$json.score}}",
+        "options": {
+          "systemMessage": "You are an AI assistant that generates concise summaries of processed data.",
+          "maxIterations": 3
+        }
+      }
+    },
+    {
+      "id": "set-final",
+      "name": "Set - Final Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [2650, 600],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "finalSummary",
+              "value": "={{$json.output}}"
+            },
+            {
+              "name": "completedAt",
+              "value": "={{$now.toISO()}}"
+            },
+            {
+              "name": "status",
+              "value": "completed"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Merge All Triggers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Merge All Triggers",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Merge All Triggers",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge All Triggers": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - External API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - External API": {
+      "main": [
+        [
+          {
+            "node": "Code - Data Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Data Processing": {
+      "main": [
+        [
+          {
+            "node": "If - Score Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Score Check": {
+      "main": [
+        [
+          {
+            "node": "Switch - Priority Routing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch - Priority Routing": {
+      "main": [
+        [
+          {
+            "node": "Set - High Priority",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Medium Priority",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Low Priority",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - High Priority": {
+      "main": [
+        [
+          {
+            "node": "Merge Priorities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Medium Priority": {
+      "main": [
+        [
+          {
+            "node": "Merge Priorities",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Set - Low Priority": {
+      "main": [
+        [
+          {
+            "node": "Merge Priorities",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Priorities": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Email Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack - Team Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Microsoft Teams - Manager Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Discord - Community Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Email Notification": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Log Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack - Team Notification": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Log Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft Teams - Manager Alert": {
+      "main": [
+        [
+          {
+            "node": "Airtable - Create Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord - Community Notification": {
+      "main": [
+        [
+          {
+            "node": "Notion - Update Documentation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Log Data": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Summary Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable - Create Record": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Summary Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion - Update Documentation": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Summary Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Memory Buffer": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent - Summary Generator",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini AI": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Summary Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Summary Generator": {
+      "main": [
+        [
+          {
+            "node": "Set - Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "10"
+}
+
+
+
+

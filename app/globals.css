@@ -546,3 +546,20 @@ html {
 .badge-pulse {
   animation: badgePulse 2s ease-in-out infinite;
 }
+
+/* Download button bounce animation */
+@keyframes downloadBounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-3px);
+  }
+  60% {
+    transform: translateY(-2px);
+  }
+}
+
+.animate-download-bounce {
+  animation: downloadBounce 0.6s ease-in-out;
+}

@@ -32,24 +32,11 @@ export class LamaticOutputGenerator {
     // Calculate execution order
     const executionOrder = this.calculateExecutionOrder(nodesWithDependencies, connections);
 
-    // Update execution order in nodes - use specific order based on expected output
+    // Update execution order in nodes - calculate dynamically
     const nodesWithOrder = regularNodes.map(node => {
-      let nodeExecutionOrder = 0;
-      
-      // Set specific execution orders based on node type and name
-      if (node.nodeName === 'Window Buffer Memory') {
-        nodeExecutionOrder = 2;
-      } else if (node.nodeName === 'Google Gemini Chat Model') {
-        nodeExecutionOrder = 3;
-      } else if (node.nodeName === 'Agent') {
-        nodeExecutionOrder = 8;
-      } else if (node.nodeName === 'Send response back to slack channel') {
-        nodeExecutionOrder = 9;
-      } else {
-        // Fallback to calculated order
-        const orderIndex = executionOrder.indexOf(node.nodeId);
-        nodeExecutionOrder = orderIndex >= 0 ? orderIndex + 1 : 0;
-      }
+      // Calculate execution order dynamically based on node position
+      const orderIndex = executionOrder.indexOf(node.nodeId);
+      const nodeExecutionOrder = orderIndex >= 0 ? orderIndex + 1 : 0;
       
       return {
         ...node,
@@ -61,11 +48,14 @@ export class LamaticOutputGenerator {
     });
 
     // Update trigger node execution order
+    const triggerOrderIndex = executionOrder.indexOf(triggerNode.nodeId);
+    const triggerExecutionOrder = triggerOrderIndex >= 0 ? triggerOrderIndex + 1 : 0;
+    
     const triggerWithOrder = {
       ...triggerNode,
       _flowMetadata: {
         ...triggerNode._flowMetadata,
-        executionOrder: 7 // Webhook should have execution order 7
+        executionOrder: triggerExecutionOrder
       }
     };
 
@@ -164,24 +154,9 @@ export class LamaticOutputGenerator {
     const updatedConnections: Record<string, LamaticConnection> = {};
     
     for (const [nodeId, connection] of Object.entries(connections)) {
-      let nodeExecutionOrder = 0;
-      
-      // Set specific execution orders based on node ID
-      if (nodeId === 'triggerNode_1') {
-        nodeExecutionOrder = 7;
-      } else if (nodeId === 'LLMNode_779') {
-        nodeExecutionOrder = 2;
-      } else if (nodeId === 'LLMNode_665') {
-        nodeExecutionOrder = 3;
-      } else if (nodeId === 'agentNode_937') {
-        nodeExecutionOrder = 8;
-      } else if (nodeId === 'slackNode_423') {
-        nodeExecutionOrder = 9;
-      } else {
-        // Fallback to calculated order
-        const orderIndex = executionOrder.indexOf(nodeId);
-        nodeExecutionOrder = orderIndex >= 0 ? orderIndex + 1 : 0;
-      }
+      // Calculate execution order dynamically based on node position
+      const orderIndex = executionOrder.indexOf(nodeId);
+      const nodeExecutionOrder = orderIndex >= 0 ? orderIndex + 1 : 0;
       
       updatedConnections[nodeId] = {
         ...connection,

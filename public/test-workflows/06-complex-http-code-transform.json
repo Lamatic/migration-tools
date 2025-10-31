@@ -1,0 +1,238 @@
+{
+  "name": "Complex API Integration with Data Processing",
+  "nodes": [
+    {
+      "id": "schedule-1",
+      "name": "Hourly Sync",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 400],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "http-1",
+      "name": "Fetch User Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 400],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.example.com/v1/users",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$credentials.apiKey}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "code-1",
+      "name": "Process User Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [650, 400],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Process and enrich user data\nconst user = $input.item.json;\n\n// Calculate user score based on activity\nconst calculateScore = (user) => {\n  let score = 0;\n  if (user.logins > 100) score += 50;\n  if (user.purchases > 10) score += 30;\n  if (user.referrals > 5) score += 20;\n  return score;\n};\n\n// Determine user tier\nconst getTier = (score) => {\n  if (score >= 80) return 'platinum';\n  if (score >= 50) return 'gold';\n  if (score >= 20) return 'silver';\n  return 'bronze';\n};\n\nconst score = calculateScore(user);\nconst tier = getTier(score);\n\n// Return enriched data\nreturn {\n  json: {\n    userId: user.id,\n    name: user.name,\n    email: user.email,\n    score: score,\n    tier: tier,\n    isActive: user.lastLogin && (Date.now() - new Date(user.lastLogin).getTime()) < 30 * 24 * 60 * 60 * 1000,\n    processedAt: new Date().toISOString(),\n    metrics: {\n      logins: user.logins || 0,\n      purchases: user.purchases || 0,\n      referrals: user.referrals || 0\n    }\n  }\n};"
+      }
+    },
+    {
+      "id": "switch-1",
+      "name": "Route by Tier",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [850, 400],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "rules": [
+            {
+              "operation": "equal",
+              "value1": "={{$json.tier}}",
+              "value2": "platinum",
+              "output": 0
+            },
+            {
+              "operation": "equal",
+              "value1": "={{$json.tier}}",
+              "value2": "gold",
+              "output": 1
+            }
+          ]
+        },
+        "fallbackOutput": 2
+      }
+    },
+    {
+      "id": "http-2",
+      "name": "Update CRM - Premium",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1050, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.crm.example.com/v1/premium-customers",
+        "authentication": "genericCredentialType",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "customerId",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "tier",
+              "value": "={{$json.tier}}"
+            },
+            {
+              "name": "score",
+              "value": "={{$json.score}}"
+            },
+            {
+              "name": "segment",
+              "value": "premium"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "set-1",
+      "name": "Format Standard Update",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1050, 500],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "customerId",
+              "value": "={{$json.userId}}"
+            },
+            {
+              "name": "tier",
+              "value": "={{$json.tier}}"
+            },
+            {
+              "name": "segment",
+              "value": "standard"
+            }
+          ],
+          "number": [
+            {
+              "name": "score",
+              "value": "={{$json.score}}"
+            }
+          ],
+          "boolean": [
+            {
+              "name": "requiresFollowup",
+              "value": "={{$json.tier === 'bronze'}}"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Hourly Sync": {
+      "main": [
+        [
+          {
+            "node": "Fetch User Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch User Data": {
+      "main": [
+        [
+          {
+            "node": "Process User Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process User Data": {
+      "main": [
+        [
+          {
+            "node": "Route by Tier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Tier": {
+      "main": [
+        [
+          {
+            "node": "Update CRM - Premium",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update CRM - Premium",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Standard Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "6"
+}
+
+
+
+

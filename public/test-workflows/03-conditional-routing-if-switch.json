@@ -1,0 +1,210 @@
+{
+  "name": "Customer Tier Routing System",
+  "nodes": [
+    {
+      "id": "webhook-1",
+      "name": "New Customer Data",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 400],
+      "webhookId": "customer-data",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "customer-intake",
+        "responseMode": "lastNode"
+      }
+    },
+    {
+      "id": "if-1",
+      "name": "Check if Active",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 400],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.isActive}}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "switch-1",
+      "name": "Route by Customer Tier",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "rules": [
+            {
+              "operation": "equal",
+              "value1": "={{$json.tier}}",
+              "value2": "platinum",
+              "output": 0
+            },
+            {
+              "operation": "equal",
+              "value1": "={{$json.tier}}",
+              "value2": "gold",
+              "output": 1
+            },
+            {
+              "operation": "equal",
+              "value1": "={{$json.tier}}",
+              "value2": "silver",
+              "output": 2
+            }
+          ]
+        },
+        "fallbackOutput": 3
+      }
+    },
+    {
+      "id": "slack-platinum",
+      "name": "Notify Platinum Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [850, 200],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "C_PLATINUM",
+        "text": "🌟 Platinum Customer: {{$json.name}} - {{$json.email}}",
+        "username": "CRM Bot"
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "slack-cred-1",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "id": "teams-gold",
+      "name": "Notify Gold Team",
+      "type": "n8n-nodes-base.microsoftTeams",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channelId": "19:abc123@thread.tacv2",
+        "messageText": "💛 Gold Customer: {{$json.name}} - {{$json.email}}"
+      },
+      "credentials": {
+        "microsoftTeamsOAuth2": {
+          "id": "teams-cred-1",
+          "name": "Microsoft Teams OAuth2"
+        }
+      }
+    },
+    {
+      "id": "discord-silver",
+      "name": "Notify Silver Team",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 1,
+      "position": [850, 400],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "channelId": "987654321098765432",
+        "content": "🥈 Silver Customer: {{$json.name}} - {{$json.email}}"
+      },
+      "credentials": {
+        "discordBotApi": {
+          "id": "discord-cred-1",
+          "name": "Discord Bot API"
+        }
+      }
+    },
+    {
+      "id": "set-inactive",
+      "name": "Mark as Inactive",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [650, 500],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "inactive"
+            },
+            {
+              "name": "processedDate",
+              "value": "={{$now.toISO()}}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "New Customer Data": {
+      "main": [
+        [
+          {
+            "node": "Check if Active",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Active": {
+      "main": [
+        [
+          {
+            "node": "Route by Customer Tier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark as Inactive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Customer Tier": {
+      "main": [
+        [
+          {
+            "node": "Notify Platinum Team",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Gold Team",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Silver Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "3"
+}
+
+
+
+
