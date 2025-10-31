@@ -1,0 +1,59 @@
+{
+  "name": "Edge Case - No Connections",
+  "nodes": [
+    {
+      "id": "webhook-1",
+      "name": "Isolated Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "isolated-webhook",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "test"
+      }
+    },
+    {
+      "id": "slack-1",
+      "name": "Isolated Slack Node",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "parameters": {
+        "channel": "C01234",
+        "text": "Test message"
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "slack-cred-1",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "id": "set-1",
+      "name": "Isolated Set",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "test",
+              "value": "value"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "id": "8"
+}
+
+
+
+

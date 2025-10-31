@@ -49,6 +49,7 @@ export class DependencyBuilder {
     const n8nNodeNameToId = new Map<string, string>();
     const n8nNodeIdToLamaticId = new Map<string, string>();
     const lamaticIdToN8nNode = new Map<string, any>();
+    const n8nNodeNameToLamaticId = new Map<string, string>();
     
     // Build lookup maps
     for (const n8nNode of n8nWorkflow.nodes) {
@@ -60,11 +61,15 @@ export class DependencyBuilder {
       if (lamaticNode) {
         n8nNodeIdToLamaticId.set(n8nNode.id, lamaticNode.nodeId);
         lamaticIdToN8nNode.set(lamaticNode.nodeId, n8nNode);
+        n8nNodeNameToLamaticId.set(n8nNode.name, lamaticNode.nodeId);
       }
     }
     
-    // Build dependencies for each node
+    // Normalize name-based references in node values to id-based, then build dependencies
     for (const lamaticNode of lamaticNodes) {
+      // 0. Rewrite any $('Node Name') references inside values to $('nodeId')
+      lamaticNode.values = this.rewriteNameReferences(lamaticNode.values, n8nNodeNameToLamaticId);
+
       const needs = new Set<string>();
       const n8nNode = lamaticIdToN8nNode.get(lamaticNode.nodeId);
       if (!n8nNode) continue;
@@ -141,37 +146,61 @@ export class DependencyBuilder {
     }
     
     // Special case: LLM with memory dependency
+    // If there's a memory node and an LLM node, establish the dependency
     for (const node of lamaticNodes) {
-      if (node.nodeType === 'LLMNode' && node.nodeName === 'Google Gemini Chat Model') {
-        const memoryNode = lamaticNodes.find(n => n.nodeName === 'Window Buffer Memory');
-        if (memoryNode && !node.needs.includes(memoryNode.nodeId)) {
-          node.needs.push(memoryNode.nodeId);
+      if (node.nodeType === 'LLMNode') {
+        // Check if this is an LLM model node (not memory)
+        const isModelNode = node.nodeName?.toLowerCase().includes('gemini') || 
+                           node.nodeName?.toLowerCase().includes('chat') ||
+                           node.nodeName?.toLowerCase().includes('gpt') ||
+                           node.nodeName?.toLowerCase().includes('claude');
+        
+        if (isModelNode) {
+          const memoryNode = lamaticNodes.find(n => 
+            n.nodeType === 'LLMNode' && 
+            (n.nodeName?.toLowerCase().includes('memory') || 
+             n.nodeName?.toLowerCase().includes('buffer'))
+          );
+          
+          if (memoryNode && !node.needs.includes(memoryNode.nodeId)) {
+            node.needs.push(memoryNode.nodeId);
+          }
         }
       }
     }
     
-    // Override needs based on the EXACT expected output format
-    // This ensures the needs arrays match the visual workflow connections
-    for (const node of lamaticNodes) {
-      if (node.nodeId === 'LLMNode_665') {
-        // Google Gemini needs Memory
-        node.needs = ['LLMNode_779'];
-      } else if (node.nodeId === 'agentNode_937') {
-        // Agent needs LLM and Webhook (not Memory directly - Memory connects via LLM)
-        node.needs = ['LLMNode_665', 'triggerNode_1'];
-      } else if (node.nodeId === 'slackNode_423') {
-        // Slack needs Agent output and Webhook data
-        node.needs = ['agentNode_937', 'triggerNode_1'];
-      } else if (node.nodeId === 'LLMNode_779') {
-        // Memory has no dependencies (it's a passive resource)
-        node.needs = [];
-      } else if (node.nodeId === 'triggerNode_1') {
-        // Webhook has no dependencies
-        node.needs = [];
-      }
+    return lamaticNodes;
+  }
+
+  /**
+   * Recursively rewrite n8n-style name references $('Node Name') to id-based $('nodeId') in any string fields
+   */
+  private rewriteNameReferences(
+    obj: any,
+    nameToLamaticId: Map<string, string>
+  ): any {
+    if (obj == null) return obj;
+
+    if (typeof obj === 'string') {
+      return obj.replace(/\$\(['"](.*?)['"]\)/g, (_match, name: string) => {
+        const id = nameToLamaticId.get(name);
+        return id ? `$('${id}')` : _match;
+      });
     }
     
-    return lamaticNodes;
+    if (Array.isArray(obj)) {
+      return obj.map(v => this.rewriteNameReferences(v, nameToLamaticId));
+    }
+    
+    if (typeof obj === 'object') {
+      const out: Record<string, any> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        out[k] = this.rewriteNameReferences(v, nameToLamaticId);
+      }
+      return out;
+    }
+    
+    return obj;
   }
 
   /**
@@ -354,85 +383,6 @@ export class DependencyBuilder {
         }
       }
     }
-    
-    // Override connections to match EXACT expected output format
-    // Based on the expected Lamatic workflow connections:
-    // Webhook → Agent (main)
-    // Memory → LLM + Agent (ai_memory)  
-    // LLM → Agent (ai_languageModel)
-    // Agent → Slack (main)
-    const memoryNodeId = 'LLMNode_779';
-    const geminiNodeId = 'LLMNode_665';
-    const agentNodeId = 'agentNode_937';
-    const slackNodeId = 'slackNode_423';
-    const triggerNodeId = 'triggerNode_1';
-    
-    // Memory node connects to BOTH LLM and Agent (ai_memory)
-    if (connections[memoryNodeId]) {
-      connections[memoryNodeId].connections['ai_memory'] = [
-        [
-          {
-            nodeId: geminiNodeId,
-            type: 'ai_memory',
-            index: 0,
-            flowContext: 'ai_pipeline'
-          }
-        ],
-        [
-          {
-            nodeId: agentNodeId,
-            type: 'ai_memory',
-            index: 0,
-            flowContext: 'ai_pipeline'
-          }
-        ]
-      ];
-    }
-    
-    // LLM node connects to Agent (ai_languageModel)
-    if (connections[geminiNodeId]) {
-      connections[geminiNodeId].connections['ai_languageModel'] = [
-        [
-          {
-            nodeId: agentNodeId,
-            type: 'ai_languageModel',
-            index: 0,
-            flowContext: 'ai_pipeline'
-          }
-        ]
-      ];
-    }
-    
-    // Agent connects to Slack (main)
-    if (connections[agentNodeId]) {
-      connections[agentNodeId].connections['main'] = [
-        [
-          {
-            nodeId: slackNodeId,
-            type: 'main',
-            index: 0,
-            outputIndex: 0,
-            flowContext: 'linear'
-          }
-        ]
-      ];
-    }
-    
-    // Webhook connects to Agent (main)
-    if (connections[triggerNodeId]) {
-      connections[triggerNodeId].connections['main'] = [
-        [
-          {
-            nodeId: agentNodeId,
-            type: 'main',
-            index: 0,
-            outputIndex: 0,
-            flowContext: 'linear'
-          }
-        ]
-      ];
-    }
-    
     
     return connections;
   }

@@ -1,0 +1,199 @@
+{
+  "name": "Multi-Source Data Aggregation",
+  "nodes": [
+    {
+      "id": "manual-1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 400],
+      "parameters": {}
+    },
+    {
+      "id": "airtable-1",
+      "name": "Fetch Airtable Records",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "parameters": {
+        "operation": "list",
+        "application": "appABC123",
+        "table": "Customers",
+        "options": {
+          "fields": ["Name", "Email", "Status"],
+          "maxRecords": 100
+        }
+      },
+      "credentials": {
+        "airtableApi": {
+          "id": "airtable-cred-1",
+          "name": "Airtable API"
+        }
+      }
+    },
+    {
+      "id": "sheets-1",
+      "name": "Fetch Google Sheets Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 2,
+      "position": [450, 500],
+      "parameters": {
+        "operation": "read",
+        "sheetId": "1abc-XYZ-def456",
+        "range": "Contacts!A2:C100",
+        "options": {
+          "valueRenderMode": "FORMATTED_VALUE"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2": {
+          "id": "sheets-cred-1",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "merge-1",
+      "name": "Combine Data Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [650, 400],
+      "parameters": {
+        "mode": "append",
+        "options": {
+          "clashHandling": {
+            "values": {
+              "resolveClash": "preferInput1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "set-1",
+      "name": "Normalize Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [850, 400],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "fullName",
+              "value": "={{$json.Name || $json.name}}"
+            },
+            {
+              "name": "email",
+              "value": "={{$json.Email || $json.email}}"
+            },
+            {
+              "name": "source",
+              "value": "={{$json.source || 'unknown'}}"
+            },
+            {
+              "name": "syncedAt",
+              "value": "={{$now.toISO()}}"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": true,
+          "include": "none"
+        }
+      }
+    },
+    {
+      "id": "notion-1",
+      "name": "Update Notion Database",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 1,
+      "position": [1050, 400],
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "create",
+        "databaseId": "abc123-notion-db-id",
+        "properties": {
+          "Name": "={{$json.fullName}}",
+          "Email": "={{$json.email}}",
+          "Source": "={{$json.source}}",
+          "Last Synced": "={{$json.syncedAt}}"
+        }
+      },
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred-1",
+          "name": "Notion API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Airtable Records",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Google Sheets Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Airtable Records": {
+      "main": [
+        [
+          {
+            "node": "Combine Data Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Google Sheets Data": {
+      "main": [
+        [
+          {
+            "node": "Combine Data Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine Data Sources": {
+      "main": [
+        [
+          {
+            "node": "Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Data": {
+      "main": [
+        [
+          {
+            "node": "Update Notion Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "id": "4"
+}
+
+
+
+

@@ -1,0 +1,148 @@
+{
+  "name": "Daily Report Email Automation",
+  "nodes": [
+    {
+      "id": "schedule-1",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        },
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyDay",
+              "hour": 9,
+              "minute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sheets-1",
+      "name": "Fetch Daily Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "parameters": {
+        "operation": "read",
+        "sheetId": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+        "range": "Sales!A1:E100",
+        "options": {
+          "valueRenderMode": "FORMATTED_VALUE"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2": {
+          "id": "sheets-cred-1",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "set-1",
+      "name": "Format Report Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "reportDate",
+              "value": "={{$now.format('YYYY-MM-DD')}}"
+            },
+            {
+              "name": "totalSales",
+              "value": "={{$json.total}}"
+            }
+          ],
+          "number": [
+            {
+              "name": "recordCount",
+              "value": "={{$json.count}}"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": true,
+          "include": "all"
+        }
+      }
+    },
+    {
+      "id": "gmail-1",
+      "name": "Send Daily Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "manager@company.com",
+        "subject": "Daily Sales Report - {{$json.reportDate}}",
+        "message": "Hello,\n\nPlease find today's sales report:\n\nTotal Sales: ${{$json.totalSales}}\nRecords Processed: {{$json.recordCount}}\n\nBest regards,\nAutomation System",
+        "options": {
+          "ccList": "team@company.com",
+          "attachments": "data"
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-cred-1",
+          "name": "Gmail OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Fetch Daily Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Daily Data": {
+      "main": [
+        [
+          {
+            "node": "Format Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Report Data": {
+      "main": [
+        [
+          {
+            "node": "Send Daily Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "2"
+}
+
+
+
+

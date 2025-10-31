@@ -1,0 +1,202 @@
+{
+  "name": "AI-Powered Slack Chatbot",
+  "nodes": [
+    {
+      "id": "webhook-1",
+      "name": "Slack Message Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 400],
+      "webhookId": "slack-bot",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack-bot",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryJson"
+      }
+    },
+    {
+      "id": "memory-1",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{$json.user_id}}",
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "gemini-1",
+      "name": "Google Gemini AI",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [450, 400],
+      "parameters": {
+        "modelName": "gemini-pro",
+        "options": {
+          "temperature": 0.7,
+          "maxOutputTokens": 2048,
+          "topP": 0.95,
+          "topK": 40
+        }
+      },
+      "credentials": {
+        "googleGeminiOAuth2": {
+          "id": "gemini-cred-1",
+          "name": "Google Gemini OAuth2"
+        }
+      }
+    },
+    {
+      "id": "code-1",
+      "name": "Extract User Question",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [450, 500],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const text = item.json.text || '';\n  const userId = item.json.user_id || 'anonymous';\n  const channelId = item.json.channel_id || '';\n  \n  results.push({\n    json: {\n      question: text,\n      userId: userId,\n      channelId: channelId,\n      timestamp: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
+      }
+    },
+    {
+      "id": "agent-1",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [650, 400],
+      "parameters": {
+        "text": "={{$json.question}}",
+        "options": {
+          "systemMessage": "You are a helpful AI assistant integrated with Slack. Provide clear, concise, and friendly responses to user questions. If you don't know something, be honest about it.",
+          "maxIterations": 5
+        }
+      }
+    },
+    {
+      "id": "set-1",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [850, 400],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "response",
+              "value": "={{$json.output}}"
+            },
+            {
+              "name": "channel",
+              "value": "={{$('Extract User Question').item.json.channelId}}"
+            },
+            {
+              "name": "threadTs",
+              "value": "={{$('Slack Message Webhook').item.json.thread_ts}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "slack-1",
+      "name": "Send Response to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [1050, 400],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "={{$json.channel}}",
+        "text": "{{$json.response}}",
+        "username": "AI Assistant",
+        "markdown": true,
+        "otherOptions": {
+          "thread_ts": "={{$json.threadTs}}"
+        }
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "slack-cred-1",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Slack Message Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract User Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini AI": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract User Question": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Send Response to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "5"
+}
+
+
+
+

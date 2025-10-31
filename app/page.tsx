@@ -5,6 +5,131 @@ import { Upload, Download, RefreshCw, Check, AlertCircle, XCircle, ArrowRight, F
 import { ThemeToggle } from '@/components/theme-toggle';
 
 // PDF generation helper - Minimalist, clean design
+// Generate Markdown report for Notion users
+const generateMarkdownReport = (result: any): string => {
+  const workflowName = result.lamaticWorkflow?.name || 'Workflow';
+  const date = new Date().toLocaleDateString();
+  const time = new Date().toLocaleTimeString();
+  
+  let markdown = `# 📊 n8n to Lamatic Migration Report\n\n`;
+  markdown += `**Workflow:** ${workflowName}\n`;
+  markdown += `**Migration Date:** ${date} at ${time}\n`;
+  markdown += `**Processing Time:** ${Math.round((result.processingTime || 0) / 1000)}s\n\n`;
+  markdown += `---\n\n`;
+  
+  // Quick Summary
+  markdown += `## ✅ Quick Summary\n\n`;
+  markdown += `- **Total Nodes:** ${result.totalNodes}\n`;
+  markdown += `- **Successfully Migrated:** ${result.convertedNodes}\n`;
+  markdown += `- **Warnings:** ${result.warningNodes || 0}\n`;
+  markdown += `- **Success Rate:** ${Math.round((result.convertedNodes / result.totalNodes) * 100)}%\n\n`;
+  markdown += `---\n\n`;
+  
+  // What's Next
+  markdown += `## 🚀 What's Next?\n\n`;
+  markdown += `Follow these steps to complete your workflow migration:\n\n`;
+  
+  markdown += `### Step 1: Open Lamatic Studio\n`;
+  markdown += `Navigate to [studio.lamatic.ai](https://studio.lamatic.ai) in your browser\n\n`;
+  
+  markdown += `### Step 2: Import Your Workflow\n`;
+  markdown += `**Copy-Paste Method (Easiest):**\n`;
+  markdown += `1. Open your downloaded file in any text editor\n`;
+  markdown += `2. Select all content (Ctrl+A or Cmd+A) and copy\n`;
+  markdown += `3. In Lamatic Studio, click the **"Config"** toggle (top-right)\n`;
+  markdown += `4. Paste the JSON content into the editor\n`;
+  markdown += `5. Click **"Save"** button\n`;
+  markdown += `6. Done! Your workflow is now imported ✅\n\n`;
+  
+  // Credentials if needed
+  if (result.warningNodes > 0) {
+    markdown += `### Step 3: ⛔ MUST FIX - Configure Credentials\n\n`;
+    markdown += `Your workflow won't run until these are configured:\n\n`;
+    
+    const credentialNodes = result.nodeResults?.filter((n: any) => 
+      n.n8nNodeType?.includes('slack') || 
+      n.n8nNodeType?.includes('gemini') ||
+      n.message?.toLowerCase().includes('credential')
+    );
+    
+    if (credentialNodes && credentialNodes.length > 0) {
+      credentialNodes.forEach((node: any) => {
+        const isSlack = node.n8nNodeType?.includes('slack');
+        const isGemini = node.n8nNodeType?.includes('gemini');
+        
+        if (isSlack) {
+          markdown += `#### 💬 Slack Setup\n`;
+          markdown += `1. Visit [api.slack.com/apps](https://api.slack.com/apps)\n`;
+          markdown += `2. Create app → OAuth & Permissions\n`;
+          markdown += `3. Copy "Bot User OAuth Token"\n`;
+          markdown += `4. In Lamatic: Click Slack node → Configure Credentials → Paste token\n`;
+          markdown += `5. Required permissions: \`chat:write\`, \`channels:read\`\n`;
+          markdown += `⏱️ Time: 3-5 minutes\n\n`;
+        }
+        
+        if (isGemini) {
+          markdown += `#### 🤖 Google Gemini Setup\n`;
+          markdown += `1. Visit [makersuite.google.com/app/apikey](https://makersuite.google.com/app/apikey)\n`;
+          markdown += `2. Click "Create API Key"\n`;
+          markdown += `3. Copy the generated key\n`;
+          markdown += `4. In Lamatic: Click Gemini node → Configure Credentials → Paste key\n`;
+          markdown += `🔐 Keep your API key secure!\n`;
+          markdown += `⏱️ Time: 2-3 minutes\n\n`;
+        }
+      });
+    }
+  }
+  
+  // Testing
+  markdown += `### Step ${result.warningNodes > 0 ? '4' : '3'}: 🧪 Test Your Workflow\n`;
+  markdown += `1. In Lamatic, click **"Test Run"** button\n`;
+  markdown += `2. Provide sample input data for testing\n`;
+  markdown += `3. Verify each node executes correctly\n`;
+  markdown += `4. Check that output matches your expectations\n`;
+  markdown += `5. Review execution logs for any issues\n\n`;
+  
+  // Deploy
+  markdown += `### Step ${result.warningNodes > 0 ? '5' : '4'}: 🚀 Deploy & Go Live\n`;
+  markdown += `1. Activate your workflow in Lamatic\n`;
+  markdown += `2. Update webhook URLs in your external services (if applicable)\n`;
+  markdown += `3. Monitor initial executions closely\n`;
+  markdown += `4. Keep your original n8n workflow as backup\n\n`;
+  
+  markdown += `⏱️ **Total estimated time:** ${result.warningNodes > 0 ? '10-15' : '5-8'} minutes\n\n`;
+  markdown += `---\n\n`;
+  
+  // Node Details
+  markdown += `## 📋 Node Conversion Details\n\n`;
+  result.nodeResults?.forEach((node: any, i: number) => {
+    const statusEmoji = node.status === 'success' ? '✅' : node.status === 'warning' ? '⚠️' : '❌';
+    markdown += `${i + 1}. ${statusEmoji} **${node.n8nNodeName}**\n`;
+    markdown += `   - Type: \`${node.n8nNodeType}\` → \`${node.lamaticNodeType}\`\n`;
+    markdown += `   - Status: ${node.status}\n`;
+    if (node.message) {
+      markdown += `   - Note: ${node.message}\n`;
+    }
+    markdown += `\n`;
+  });
+  
+  markdown += `---\n\n`;
+  
+  // Tips
+  markdown += `## 💡 Tips for Success\n\n`;
+  markdown += `- Test each node individually before running the full workflow\n`;
+  markdown += `- Set up all required credentials before testing\n`;
+  markdown += `- Keep your original n8n workflow as backup\n`;
+  markdown += `- Monitor logs during initial executions\n\n`;
+  
+  // Support
+  markdown += `## 📞 Need Help?\n\n`;
+  markdown += `Visit [Lamatic Documentation](https://lamatic.ai/docs) for detailed guides.\n\n`;
+  
+  markdown += `---\n\n`;
+  markdown += `*Report generated by n8n to Lamatic Migration Tool*\n`;
+  
+  return markdown;
+};
+
 const generatePDF = async (result: any, reportElement?: HTMLElement | null) => {
   try {
     const { jsPDF } = await import('jspdf');
@@ -197,39 +322,151 @@ const generatePDF = async (result: any, reportElement?: HTMLElement | null) => {
     drawLine();
 
     // ==========================================
-    // NEXT STEPS - Minimal, actionable
+    // WHAT'S NEXT - SAME AS MODAL
     // ==========================================
     checkPageBreak(20);
     pdf.setFontSize(11);
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-    pdf.text('Next Steps', margin, yPos);
+    pdf.text('What\'s Next?', margin, yPos);
     yPos += 7;
-
-    const steps = [
-      'Import the converted workflow file into your Lamatic workspace',
-      'Configure required credentials for external services',
-      'Test each node to verify proper configuration',
-      'Update webhook URLs in your external systems if applicable',
-      'Deploy and monitor the workflow'
-    ];
 
     pdf.setFontSize(9);
     pdf.setFont('helvetica', 'normal');
     pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-    
-    steps.forEach((step, i) => {
-      checkPageBreak(6);
-      pdf.text(`${i + 1}.`, margin + 3, yPos);
+    pdf.text('Follow these steps to complete your workflow migration:', margin, yPos);
+    yPos += 8;
+
+    // Step 1
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Step 1: Open Lamatic Studio', margin, yPos);
+    yPos += 5;
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('Navigate to studio.lamatic.ai in your browser', margin, yPos);
+    yPos += 8;
+
+    // Step 2
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Step 2: Import Your Workflow', margin, yPos);
+    yPos += 5;
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('Copy-Paste Method (Easiest):', margin, yPos);
+    yPos += 4;
+    pdf.text('1. Open your downloaded file in any text editor', margin, yPos);
+    yPos += 4;
+    pdf.text('2. Select all content (Ctrl+A or Cmd+A) and copy', margin, yPos);
+    yPos += 4;
+    pdf.text('3. In Lamatic Studio, click the "Config" toggle (top-right)', margin, yPos);
+    yPos += 4;
+    pdf.text('4. Paste the JSON content into the editor', margin, yPos);
+    yPos += 4;
+    pdf.text('5. Click "Save" button', margin, yPos);
+    yPos += 4;
+    pdf.text('6. Done! Your workflow is now imported', margin, yPos);
+    yPos += 8;
+
+    // Step 3 - Credentials (if needed)
+    if (result.warningNodes > 0) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Step 3: MUST FIX - Configure Credentials', margin, yPos);
+      yPos += 5;
+      pdf.setFont('helvetica', 'normal');
+      pdf.text('Your workflow requires authentication setup. It won\'t run until these are configured.', margin, yPos);
+      yPos += 6;
       
-      const lines = pdf.splitTextToSize(step, contentWidth - 10);
-      lines.forEach((line: string, lineIndex: number) => {
-        if (lineIndex > 0) checkPageBreak(4);
-        pdf.text(line, margin + 8, yPos);
-        yPos += 4;
-      });
-      yPos += 1;
-    });
+      const credentialNodes = result.nodeResults?.filter((n: any) => 
+        n.n8nNodeType?.includes('slack') || 
+        n.n8nNodeType?.includes('gemini') ||
+        n.message?.toLowerCase().includes('credential')
+      );
+      
+      if (credentialNodes && credentialNodes.length > 0) {
+        credentialNodes.forEach((node: any) => {
+          const isSlack = node.n8nNodeType?.includes('slack');
+          const isGemini = node.n8nNodeType?.includes('gemini');
+          
+          if (isSlack) {
+            pdf.setFont('helvetica', 'bold');
+            pdf.text('Slack Setup:', margin, yPos);
+            yPos += 5;
+            pdf.setFont('helvetica', 'normal');
+            pdf.text('1. Visit api.slack.com/apps', margin, yPos);
+            yPos += 4;
+            pdf.text('2. Create app → OAuth & Permissions', margin, yPos);
+            yPos += 4;
+            pdf.text('3. Copy "Bot User OAuth Token"', margin, yPos);
+            yPos += 4;
+            pdf.text('4. In Lamatic: Click Slack node → Configure Credentials', margin, yPos);
+            yPos += 4;
+            pdf.text('5. Required permissions: chat:write, channels:read', margin, yPos);
+            yPos += 4;
+            pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+            pdf.text('Estimated time: 3-5 minutes', margin, yPos);
+            pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+            yPos += 8;
+          }
+          
+          if (isGemini) {
+            pdf.setFont('helvetica', 'bold');
+            pdf.text('Google Gemini Setup:', margin, yPos);
+            yPos += 5;
+            pdf.setFont('helvetica', 'normal');
+            pdf.text('1. Visit makersuite.google.com/app/apikey', margin, yPos);
+            yPos += 4;
+            pdf.text('2. Click "Create API Key"', margin, yPos);
+            yPos += 4;
+            pdf.text('3. Copy the generated key', margin, yPos);
+            yPos += 4;
+            pdf.text('4. In Lamatic: Click Gemini node → Configure Credentials', margin, yPos);
+            yPos += 4;
+            pdf.text('5. Keep your API key secure!', margin, yPos);
+            yPos += 4;
+            pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+            pdf.text('Estimated time: 2-3 minutes', margin, yPos);
+            pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+            yPos += 8;
+          }
+        });
+      }
+    }
+
+    // Step 4 - Testing
+    const stepNumber = result.warningNodes > 0 ? '4' : '3';
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`Step ${stepNumber}: Test Your Workflow`, margin, yPos);
+    yPos += 5;
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('1. In Lamatic, click "Test Run" button', margin, yPos);
+    yPos += 4;
+    pdf.text('2. Provide sample input data for testing', margin, yPos);
+    yPos += 4;
+    pdf.text('3. Verify each node executes correctly', margin, yPos);
+    yPos += 4;
+    pdf.text('4. Check that output matches your expectations', margin, yPos);
+    yPos += 4;
+    pdf.text('5. Review execution logs for any issues', margin, yPos);
+    yPos += 8;
+
+    // Step 5 - Deploy
+    const deployStepNumber = result.warningNodes > 0 ? '5' : '4';
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`Step ${deployStepNumber}: Deploy & Go Live`, margin, yPos);
+    yPos += 5;
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('1. Activate your workflow in Lamatic', margin, yPos);
+    yPos += 4;
+    pdf.text('2. Update webhook URLs in your external services (if applicable)', margin, yPos);
+    yPos += 4;
+    pdf.text('3. Monitor initial executions closely', margin, yPos);
+    yPos += 4;
+    pdf.text('4. Keep your original n8n workflow as backup', margin, yPos);
+    yPos += 8;
+
+    // Processing Time Info
+    pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+    pdf.text(`Estimated setup time: ${result.warningNodes > 0 ? '10-15 minutes' : '5-8 minutes'} (including credential configuration)`, margin, yPos);
+    pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+    yPos += 8;
 
     // ==========================================
     // FOOTER - Minimal
@@ -500,6 +737,7 @@ export default function MigrationTool() {
   const [processingMsg, setProcessingMsg] = useState('');
   const [progress, setProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
+  const [processingStage, setProcessingStage] = useState<'parsing' | 'mapping' | 'building' | 'generating' | 'finalizing'>('parsing');
   const [cardsVisible, setCardsVisible] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -572,10 +810,9 @@ export default function MigrationTool() {
     a.click();
     URL.revokeObjectURL(url);
     
-    setTimeout(() => {
-      setView('choose');
-      setResult(null);
-    }, 800);
+    // FIX: Don't auto-reset - let user stay on success page
+    // User might want to download report, copy markdown, etc.
+    // They can click "Migrate Another" when ready
   };
 
   const reset = () => {
@@ -729,29 +966,209 @@ export default function MigrationTool() {
               </div>
             </div>
 
-            {/* Action Buttons - After Summary for Better UX */}
-            <div className="flex flex-wrap gap-3 pb-6 border-b border-border">
-              <button
-                onClick={downloadFile}
-                className="btn-shine h-12 px-7 bg-primary text-white rounded-xl font-semibold inline-flex items-center gap-2.5 text-sm hover:shadow-xl hover:shadow-primary/25 hover:scale-105 transition-all"
-              >
-                <Download className="w-4 h-4" />
-                Download Lamatic Workflow
-              </button>
-              <button
-                onClick={() => setShowReport(true)}
-                className="h-12 px-6 border-2 border-primary/30 bg-primary/5 rounded-xl font-semibold inline-flex items-center gap-2 text-sm hover:bg-primary/10 hover:border-primary/50 transition-all"
-              >
-                <FileText className="w-4 h-4" />
-                View Detailed Report
-              </button>
-              <button
-                onClick={reset}
-                className="h-12 px-5 border-2 border-border rounded-xl font-semibold inline-flex items-center gap-2 text-sm hover:bg-accent hover:border-primary/30 transition-all"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Migrate Another Workflow
-              </button>
+             {/* Action Buttons - FOCUSED DESIGN */}
+             <div className="space-y-4 pb-6 border-b border-border">
+               {/* TWO MAIN ACTIONS - CLEAR HIERARCHY */}
+               <div className="flex gap-4">
+                 {/* PRIMARY: Download Workflow - Modern Design */}
+                 <button
+                   onClick={downloadFile}
+                   className="
+                     group relative overflow-hidden flex-1
+                     h-14 px-8 rounded-xl
+                     bg-gradient-to-r from-red-700 via-red-600 to-red-700
+                     text-white font-bold text-base
+                     shadow-lg shadow-red-500/25
+                     hover:shadow-2xl hover:shadow-red-500/40
+                     hover:scale-[1.02]
+                     active:scale-[0.98]
+                     transition-all duration-300
+                     border-2 border-red-600/30
+                   "
+                 >
+                   <span className="relative z-10 flex items-center justify-center gap-3">
+                     <Download className="w-5 h-5 group-hover:animate-download-bounce" />
+                     Download Lamatic Workflow
+                   </span>
+                   {/* Modern shine sweep */}
+                   <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+                   {/* Subtle pulse effect */}
+                   <div className="absolute inset-0 rounded-xl bg-red-500/20 opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300" />
+                 </button>
+
+                 {/* SECONDARY: View Report */}
+                 <button
+                   onClick={() => setShowReport(true)}
+                   className="
+                     flex-1
+                     h-14 px-8 rounded-xl
+                     bg-card
+                     border-2 border-primary/30
+                     text-foreground font-semibold text-base
+                     hover:bg-primary/5
+                     hover:border-primary/60
+                     hover:-translate-y-0.5
+                     transition-all duration-200
+                     shadow-md hover:shadow-lg
+                     inline-flex items-center justify-center gap-3
+                   "
+                 >
+                   <FileText className="w-5 h-5 text-primary" />
+                   View Full Report
+                 </button>
+               </div>
+
+               {/* TERTIARY: Migrate Another */}
+               <div className="text-center">
+                 <button
+                   onClick={reset}
+                   className="
+                     px-6 py-2 rounded-lg
+                     text-muted-foreground font-medium text-sm
+                     hover:text-foreground
+                     hover:bg-muted
+                     transition-all duration-200
+                     inline-flex items-center gap-2
+                   "
+                 >
+                   <RefreshCw className="w-4 h-4" />
+                   Migrate Another Workflow
+                 </button>
+               </div>
+             </div>
+
+            {/* FIX #1: Post-Migration Steps - Clear Next Actions */}
+            <div className="space-y-4 pb-6 border-b border-border">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                  <span className="text-xl">✅</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold">What's Next?</h2>
+                  <p className="text-sm text-muted-foreground">Follow these steps to complete your workflow migration</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {/* Step 1 */}
+                <div className="flex items-start gap-4 p-5 rounded-xl bg-card border-2 border-border hover:border-primary/30 transition-all group">
+                  <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-lg">
+                    1
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-base mb-2 flex items-center gap-2">
+                      Open Lamatic Studio
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText('https://studio.lamatic.ai');
+                          alert('URL copied to clipboard!');
+                        }}
+                        className="ml-auto text-xs px-2 py-1 bg-muted rounded hover:bg-primary/10 transition-colors"
+                      >
+                        📋 Copy URL
+                      </button>
+                    </h3>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Navigate to <a href="https://studio.lamatic.ai" target="_blank" rel="noopener noreferrer" className="text-primary font-semibold hover:underline">studio.lamatic.ai</a> in your browser
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 2 */}
+                <div className="flex items-start gap-4 p-5 rounded-xl bg-card border-2 border-border hover:border-primary/30 transition-all">
+                  <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-lg">
+                    2
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-base mb-2 flex items-center gap-2">
+                      Import Your Workflow
+                      <button
+                        onClick={() => {
+                          const workflowName = result.lamaticWorkflow?.name || 'workflow';
+                          navigator.clipboard.writeText(workflowName);
+                          alert('Workflow name copied!');
+                        }}
+                        className="ml-auto text-xs px-2 py-1 bg-muted rounded hover:bg-primary/10 transition-colors"
+                      >
+                        📋 Copy Name
+                      </button>
+                    </h3>
+                    <div className="text-sm text-muted-foreground space-y-2">
+                      <p className="font-semibold text-foreground">📋 Copy-Paste Method (Easiest):</p>
+                      <div className="pl-3 space-y-1">
+                        <p>1. Open your downloaded file in any text editor</p>
+                        <p>2. Select all content (<code className="bg-muted px-1.5 py-0.5 rounded text-xs">Ctrl+A</code> or <code className="bg-muted px-1.5 py-0.5 rounded text-xs">Cmd+A</code>) and copy</p>
+                        <p>3. In Lamatic Studio, click the <strong className="text-foreground">"Config"</strong> toggle (top-right)</p>
+                        <p>4. Paste the JSON content into the editor</p>
+                        <p>5. Click <strong className="text-foreground">"Save"</strong> button</p>
+                        <p>6. Done! Your workflow is now imported ✅</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 3 - Conditional based on warnings */}
+                {result.warningNodes > 0 && (
+                  <div className="flex items-start gap-4 p-5 rounded-xl border-2 border-yellow-500/30 bg-yellow-500/5 hover:border-yellow-500/50 transition-all">
+                    <div className="shrink-0 w-10 h-10 rounded-xl bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center font-bold text-yellow-600 dark:text-yellow-400 text-lg">
+                      3
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-base mb-2 text-yellow-700 dark:text-yellow-400">
+                        ⛔ MUST FIX: Configure Credentials
+                      </h3>
+                      <p className="text-sm text-muted-foreground mb-2">
+                        Your workflow requires authentication setup. <strong>It won't run until these are configured.</strong>
+                      </p>
+                      <div className="text-sm text-muted-foreground space-y-1">
+                        <p>1. Open your imported workflow in Lamatic</p>
+                        <p>2. Click on each node that needs credentials (marked with ⚠️)</p>
+                        <p>3. Click <strong className="text-foreground">Configure Credentials</strong></p>
+                        <p>4. Follow the setup instructions (see Detailed Report for specifics)</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 4 */}
+                <div className="flex items-start gap-4 p-5 rounded-xl bg-card border-2 border-border hover:border-primary/30 transition-all">
+                  <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-lg">
+                    {result.warningNodes > 0 ? '4' : '3'}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-base mb-2">🧪 Test Your Workflow</h3>
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>1. In Lamatic, click <strong className="text-foreground">Test Run</strong> button</p>
+                      <p>2. Provide sample input data for testing</p>
+                      <p>3. Verify each node executes correctly</p>
+                      <p>4. Check that output matches your expectations</p>
+                      <p>5. Review execution logs for any issues</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 5 */}
+                <div className="flex items-start gap-4 p-5 rounded-xl border-2 border-green-500/30 bg-green-500/5 hover:border-green-500/50 transition-all">
+                  <div className="shrink-0 w-10 h-10 rounded-xl bg-green-500/20 border border-green-500/30 flex items-center justify-center font-bold text-green-600 dark:text-green-400 text-lg">
+                    {result.warningNodes > 0 ? '5' : '4'}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-base mb-2 text-green-700 dark:text-green-400">🚀 Deploy & Go Live</h3>
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>1. Activate your workflow in Lamatic</p>
+                      <p>2. Update webhook URLs in your external services (if applicable)</p>
+                      <p>3. Monitor initial executions closely</p>
+                      <p>4. Keep your original n8n workflow as backup</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Processing Time Info */}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-4 p-3 bg-muted/30 rounded-lg">
+                <Clock className="w-4 h-4" />
+                <span>Estimated setup time: {result.warningNodes > 0 ? '10-15 minutes' : '5-8 minutes'} (including credential configuration)</span>
+              </div>
             </div>
 
             {/* Quick Node List - Expandable */}
@@ -795,20 +1212,29 @@ export default function MigrationTool() {
           </div>
         )}
 
-        {/* Processing State */}
+        {/* Processing State - FIX #7: Detailed Stage Display */}
         {view === 'processing' && (
           <div className="text-center py-16 animate-slide-up">
             <div className="w-14 h-14 rounded-full border-[3px] border-primary/20 border-t-primary mx-auto mb-6 animate-spin" />
             <h2 className="text-2xl font-semibold mb-3">{processingMsg}</h2>
+            
+            {/* Stage indicator */}
+            <div className="flex items-center justify-center gap-2 mb-6">
+              <span className={`w-2 h-2 rounded-full transition-all ${progress >= 25 ? 'bg-primary' : 'bg-muted'}`} />
+              <span className={`w-2 h-2 rounded-full transition-all ${progress >= 50 ? 'bg-primary' : 'bg-muted'}`} />
+              <span className={`w-2 h-2 rounded-full transition-all ${progress >= 75 ? 'bg-primary' : 'bg-muted'}`} />
+              <span className={`w-2 h-2 rounded-full transition-all ${progress >= 90 ? 'bg-primary' : 'bg-muted'}`} />
+            </div>
+            
             <div className="max-w-md mx-auto mb-4">
               <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-primary to-primary/80 transition-all duration-300 rounded-full"
-                  style={{ width: `${progress}%` }}
+                  style={{ width: `${Math.round(progress)}%` }}
                 />
               </div>
             </div>
-            <div className="text-base font-medium text-muted-foreground">{progress}%</div>
+            <div className="text-base font-medium text-muted-foreground">{Math.round(progress)}%</div>
           </div>
         )}
 
@@ -1153,46 +1579,110 @@ export default function MigrationTool() {
 
                                 {isSlack && (
                                   <div className="space-y-3 mt-4">
-                                    <div className="bg-muted/50 p-3 rounded-lg">
-                                      <p className="text-sm font-medium mb-2">How to set up Slack:</p>
-                                      <ol className="text-sm space-y-1 list-decimal list-inside text-muted-foreground">
-                                        <li>Go to <code className="bg-background px-1 py-0.5 rounded text-xs">api.slack.com/apps</code></li>
-                                        <li>Create a new app or select existing app</li>
-                                        <li>Go to "OAuth & Permissions"</li>
-                                        <li>Copy the "Bot User OAuth Token"</li>
-                                        <li>Add this token in Lamatic's Slack node settings</li>
-                                      </ol>
+                                    <div className="bg-yellow-500/10 border-l-4 border-yellow-500 p-4 rounded-r-lg">
+                                      <p className="text-sm font-bold mb-2 flex items-center gap-2">
+                                        <span className="text-lg">⚠️</span>
+                                        Action Required - Without this, Slack messages won't send
+                                      </p>
                                     </div>
-                                    <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                                      <span>💡</span>
-                                      <p>Required permissions: <code className="bg-background px-1 py-0.5 rounded">chat:write</code>, <code className="bg-background px-1 py-0.5 rounded">channels:read</code></p>
+                                    
+                                    <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+                                      <p className="text-sm font-bold mb-3">📝 Step-by-Step Setup:</p>
+                                      
+                                      <div className="space-y-3">
+                                        <div className="flex gap-3">
+                                          <div className="shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">1</div>
+                                          <div className="text-sm">
+                                            <p className="font-semibold mb-1">Get Your Slack Token</p>
+                                            <p className="text-muted-foreground">Visit <a href="https://api.slack.com/apps" target="_blank" className="text-primary underline">api.slack.com/apps</a> → Create or select your app → "OAuth & Permissions" → Copy <strong>"Bot User OAuth Token"</strong></p>
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="flex gap-3">
+                                          <div className="shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">2</div>
+                                          <div className="text-sm">
+                                            <p className="font-semibold mb-1">Open Your Imported Workflow</p>
+                                            <p className="text-muted-foreground">In Lamatic Studio, open the workflow you just imported → Find the <strong>{node.n8nNodeName}</strong> node</p>
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="flex gap-3">
+                                          <div className="shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">3</div>
+                                          <div className="text-sm">
+                                            <p className="font-semibold mb-1">Configure Credentials</p>
+                                            <p className="text-muted-foreground">Click the node → Click <strong>"Configure Credentials"</strong> → Paste your Bot Token → Click <strong>"Test Connection"</strong> → Save</p>
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
+                                    
+                                    <div className="bg-muted/30 p-3 rounded-lg space-y-2">
+                                      <p className="text-xs font-semibold flex items-center gap-2">
+                                        <span>🔐</span> Required Slack Permissions:
+                                      </p>
+                                      <div className="flex gap-2 flex-wrap">
+                                        <code className="bg-background px-2 py-1 rounded text-xs">chat:write</code>
+                                        <code className="bg-background px-2 py-1 rounded text-xs">channels:read</code>
+                                        <code className="bg-background px-2 py-1 rounded text-xs">users:read</code>
+                                      </div>
+                                    </div>
+                                    
                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                       <Clock className="w-3 h-3" />
-                                      <span>Estimated time: 3-5 minutes</span>
+                                      <span><strong>Time needed:</strong> 3-5 minutes</span>
                                     </div>
                                   </div>
                                 )}
 
                                 {isGemini && (
                                   <div className="space-y-3 mt-4">
-                                    <div className="bg-muted/50 p-3 rounded-lg">
-                                      <p className="text-sm font-medium mb-2">How to set up Google Gemini:</p>
-                                      <ol className="text-sm space-y-1 list-decimal list-inside text-muted-foreground">
-                                        <li>Visit <code className="bg-background px-1 py-0.5 rounded text-xs">makersuite.google.com/app/apikey</code></li>
-                                        <li>Click "Create API Key"</li>
-                                        <li>Select or create a Google Cloud project</li>
-                                        <li>Copy the generated API key</li>
-                                        <li>Add this key in Lamatic's Google Gemini node settings</li>
-                                      </ol>
+                                    <div className="bg-yellow-500/10 border-l-4 border-yellow-500 p-4 rounded-r-lg">
+                                      <p className="text-sm font-bold mb-2 flex items-center gap-2">
+                                        <span className="text-lg">⚠️</span>
+                                        Action Required - AI features won't work without API key
+                                      </p>
                                     </div>
-                                    <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                                      <span>💡</span>
-                                      <p>Tip: Keep your API key secure and never share it publicly</p>
+                                    
+                                    <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+                                      <p className="text-sm font-bold mb-3">📝 Step-by-Step Setup:</p>
+                                      
+                                      <div className="space-y-3">
+                                        <div className="flex gap-3">
+                                          <div className="shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">1</div>
+                                          <div className="text-sm">
+                                            <p className="font-semibold mb-1">Get Your Gemini API Key</p>
+                                            <p className="text-muted-foreground">Visit <a href="https://makersuite.google.com/app/apikey" target="_blank" className="text-primary underline">makersuite.google.com/app/apikey</a> → Click <strong>"Create API Key"</strong> → Select/create a Google Cloud project → Copy the key</p>
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="flex gap-3">
+                                          <div className="shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">2</div>
+                                          <div className="text-sm">
+                                            <p className="font-semibold mb-1">Open Your Imported Workflow</p>
+                                            <p className="text-muted-foreground">In Lamatic Studio, open the workflow you just imported → Find the <strong>{node.n8nNodeName}</strong> node</p>
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="flex gap-3">
+                                          <div className="shrink-0 w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">3</div>
+                                          <div className="text-sm">
+                                            <p className="font-semibold mb-1">Add API Key to Lamatic</p>
+                                            <p className="text-muted-foreground">Click the node → Click <strong>"Configure Credentials"</strong> → Paste your API Key → Click <strong>"Test API Key"</strong> → Save</p>
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
+                                    
+                                    <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-lg">
+                                      <p className="text-xs font-bold flex items-center gap-2 mb-1">
+                                        <span>🔐</span> Security Warning:
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">Never share your API key publicly or commit it to version control. Treat it like a password.</p>
+                                    </div>
+                                    
                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                       <Clock className="w-3 h-3" />
-                                      <span>Estimated time: 2-3 minutes</span>
+                                      <span><strong>Time needed:</strong> 2-3 minutes</span>
                                     </div>
                                   </div>
                                 )}
@@ -1271,20 +1761,101 @@ export default function MigrationTool() {
                   </h3>
 
                   <div className="space-y-4">
-                    {/* Migration Warnings */}
+                    {/* FIX #4: Migration Warnings with Priority Levels */}
                     {result.warnings && result.warnings.length > 0 && (
-                      <div className="p-5 rounded-xl bg-muted/50 border-2 border-border">
-                        <div className="flex items-start gap-3 mb-2">
-                          <AlertCircle className="w-6 h-6 text-primary shrink-0 mt-0.5" />
-                          <div>
-                            <p className="font-bold text-base mb-2">Warnings</p>
-                            <div className="space-y-1">
-                              {result.warnings.map((warning: string, i: number) => (
-                                <p key={i} className="text-sm leading-relaxed">• {warning}</p>
-                              ))}
+                      <div className="space-y-3">
+                        {/* Categorize warnings by priority */}
+                        {result.warnings.filter((w: string) => 
+                          w.toLowerCase().includes('credential') || 
+                          w.toLowerCase().includes('auth') ||
+                          w.toLowerCase().includes('required')
+                        ).length > 0 && (
+                          <div className="p-5 rounded-xl bg-red-500/10 border-2 border-red-500/30">
+                            <div className="flex items-start gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center shrink-0">
+                                <span className="text-lg">⛔</span>
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-bold text-base mb-2 text-red-700 dark:text-red-400">MUST FIX (Blocks Execution)</p>
+                                <div className="space-y-1">
+                                  {result.warnings
+                                    .filter((w: string) => 
+                                      w.toLowerCase().includes('credential') || 
+                                      w.toLowerCase().includes('auth') ||
+                                      w.toLowerCase().includes('required')
+                                    )
+                                    .map((warning: string, i: number) => (
+                                      <p key={i} className="text-sm leading-relaxed">• {warning}</p>
+                                    ))}
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        )}
+                        
+                        {/* Recommended warnings */}
+                        {result.warnings.filter((w: string) => 
+                          w.toLowerCase().includes('recommend') || 
+                          w.toLowerCase().includes('consider') ||
+                          w.toLowerCase().includes('should')
+                        ).length > 0 && (
+                          <div className="p-5 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30">
+                            <div className="flex items-start gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center shrink-0">
+                                <span className="text-lg">⚠️</span>
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-bold text-base mb-2 text-yellow-700 dark:text-yellow-400">RECOMMENDED (Workflow works but limited)</p>
+                                <div className="space-y-1">
+                                  {result.warnings
+                                    .filter((w: string) => 
+                                      w.toLowerCase().includes('recommend') || 
+                                      w.toLowerCase().includes('consider') ||
+                                      w.toLowerCase().includes('should')
+                                    )
+                                    .map((warning: string, i: number) => (
+                                      <p key={i} className="text-sm leading-relaxed">• {warning}</p>
+                                    ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Info/Tips */}
+                        {result.warnings.filter((w: string) => 
+                          !w.toLowerCase().includes('credential') && 
+                          !w.toLowerCase().includes('auth') &&
+                          !w.toLowerCase().includes('required') &&
+                          !w.toLowerCase().includes('recommend') &&
+                          !w.toLowerCase().includes('consider') &&
+                          !w.toLowerCase().includes('should')
+                        ).length > 0 && (
+                          <div className="p-5 rounded-xl bg-blue-500/10 border-2 border-blue-500/30">
+                            <div className="flex items-start gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
+                                <span className="text-lg">ℹ️</span>
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-bold text-base mb-2 text-blue-700 dark:text-blue-400">INFO (Nice to know)</p>
+                                <div className="space-y-1">
+                                  {result.warnings
+                                    .filter((w: string) => 
+                                      !w.toLowerCase().includes('credential') && 
+                                      !w.toLowerCase().includes('auth') &&
+                                      !w.toLowerCase().includes('required') &&
+                                      !w.toLowerCase().includes('recommend') &&
+                                      !w.toLowerCase().includes('consider') &&
+                                      !w.toLowerCase().includes('should')
+                                    )
+                                    .map((warning: string, i: number) => (
+                                      <p key={i} className="text-sm leading-relaxed">• {warning}</p>
+                                    ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1346,10 +1917,23 @@ export default function MigrationTool() {
                 <div className="flex gap-3">
                   <button
                     onClick={() => generatePDF(result)}
-                    className="h-11 px-8 bg-primary text-white rounded-xl font-semibold inline-flex items-center gap-2 text-sm hover:shadow-xl hover:shadow-primary/25 hover:scale-105 transition-all"
+                    className="h-11 px-6 bg-primary text-white rounded-xl font-semibold inline-flex items-center gap-2 text-sm hover:shadow-xl hover:shadow-primary/25 hover:scale-105 transition-all"
                   >
                     <FileDown className="w-4 h-4" />
-                    Download PDF Report
+                    Download PDF
+                  </button>
+                  <button
+                    onClick={() => {
+                      const markdown = generateMarkdownReport(result);
+                      navigator.clipboard.writeText(markdown);
+                      alert('✅ Report copied as Markdown! Paste it in Notion.');
+                    }}
+                    className="h-11 px-6 border-2 border-primary/30 bg-card text-foreground rounded-xl font-semibold inline-flex items-center gap-2 text-sm hover:bg-primary/5 hover:border-primary/60 transition-all"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Copy as Markdown
                   </button>
                   <button
                     onClick={() => setShowReport(false)}
