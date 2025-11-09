@@ -23,6 +23,25 @@ export class LamaticOutputGenerator {
     if (!triggerNode) {
       throw new Error('No trigger node found in the workflow');
     }
+    
+    // CRITICAL: Final validation - ensure all nodeId references point to existing nodes
+    // Include trigger node in valid IDs since it exists even though it's separated
+    const allValidNodeIds = new Set([
+      triggerNode.nodeId,
+      ...nodesWithDependencies.map(n => n.nodeId)
+    ]);
+    
+    // Clean any remaining invalid references (safety net)
+    for (const node of nodesWithDependencies) {
+      if (node.values) {
+        node.values = this.cleanInvalidReferences(node.values, allValidNodeIds);
+      }
+    }
+    
+    // Also clean trigger node values
+    if (triggerNode.values) {
+      triggerNode.values = this.cleanInvalidReferences(triggerNode.values, allValidNodeIds);
+    }
 
     // Filter out trigger node from regular nodes
     const regularNodes = nodesWithDependencies.filter(node => 
@@ -96,7 +115,73 @@ export class LamaticOutputGenerator {
    * Find the trigger node from the list of nodes
    */
   private findTriggerNode(nodes: LamaticNode[]): LamaticNode | undefined {
-    return nodes.find(node => node.nodeType === 'webhookTriggerNode');
+    const trigger = nodes.find(node => node.nodeType === 'webhookTriggerNode');
+    if (!trigger) {
+      // Debug: Log what node types we have
+      const nodeTypes = nodes.map(n => `${n.nodeName} (${n.nodeType})`).join(', ');
+      console.warn(`No trigger node found. Available nodes: ${nodeTypes}`);
+    }
+    return trigger;
+  }
+  
+  /**
+   * Final cleanup of invalid nodeId references (safety net)
+   */
+  private cleanInvalidReferences(obj: any, validNodeIds: Set<string>): any {
+    if (obj == null) return obj;
+
+    if (typeof obj === 'string') {
+      let result = obj;
+      const matches: Array<{match: string; nodeId: string; start: number; end: number}> = [];
+      
+      // Find all $('nodeId') patterns
+      const regex = /\$\(['"]([^'"]+)['"]\)/g;
+      let match;
+      while ((match = regex.exec(obj)) !== null) {
+        matches.push({
+          match: match[0],
+          nodeId: match[1].trim(),
+          start: match.index,
+          end: match.index + match[0].length
+        });
+      }
+      
+      // Process in reverse order
+      for (let i = matches.length - 1; i >= 0; i--) {
+        const { nodeId, start, end } = matches[i];
+        
+        if (!validNodeIds.has(nodeId)) {
+          // Invalid reference - remove or replace
+          const afterText = result.substring(end);
+          const expressionMatch = afterText.match(/^(\.[\w.]+)/);
+          
+          if (expressionMatch) {
+            result = result.substring(0, start) + `$json${expressionMatch[1]}` + result.substring(end + expressionMatch[0].length);
+          } else {
+            result = result.substring(0, start) + result.substring(end);
+          }
+        }
+      }
+      
+      return result.replace(/\s{2,}/g, ' ').trim();
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(v => this.cleanInvalidReferences(v, validNodeIds)).filter(v => v !== '');
+    }
+    
+    if (typeof obj === 'object') {
+      const out: Record<string, any> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        const cleaned = this.cleanInvalidReferences(v, validNodeIds);
+        if (cleaned !== '' || typeof cleaned === 'number' || typeof cleaned === 'boolean' || cleaned === null || (Array.isArray(cleaned) && cleaned.length > 0)) {
+          out[k] = cleaned;
+        }
+      }
+      return out;
+    }
+    
+    return obj;
   }
 
   /**

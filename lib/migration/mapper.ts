@@ -1,4 +1,6 @@
 import { N8nNode, LamaticNode, NodeMapping, ParameterMapping, CredentialMapping } from './types';
+import { ALL_SCHEMAS } from './schemas';
+import { validateAgainstSchema, isStrictMode } from './schemaValidator';
 
 /**
  * Mapping engine for converting n8n nodes to Lamatic nodes
@@ -120,21 +122,7 @@ export class NodeMapper {
       notes: 'Slack integration for messaging',
     });
 
-    // HTTP Request Node Mapping
-    this.addMapping({
-      n8nType: 'n8n-nodes-base.httpRequest',
-      lamaticType: 'LLMNode',
-      isSupported: true,
-      parameterMappings: [
-        { n8nParameter: 'url', lamaticParameter: 'url', required: true },
-        { n8nParameter: 'method', lamaticParameter: 'method', required: true },
-        { n8nParameter: 'headers', lamaticParameter: 'headers', required: false },
-        { n8nParameter: 'body', lamaticParameter: 'body', required: false },
-        { n8nParameter: 'timeout', lamaticParameter: 'timeout', required: false },
-      ],
-      credentialMappings: [],
-      notes: 'HTTP request node for API calls',
-    });
+    // HTTP Request Node Mapping (updated to apiNode - see Phase 3)
 
     // Code Node Mapping
     this.addMapping({
@@ -162,24 +150,23 @@ export class NodeMapper {
       notes: 'Conditional logic node',
     });
 
-    // Set Data Node Mapping
+    // Set Data Node Mapping → variablesNode (schema-supported)
     this.addMapping({
       n8nType: 'n8n-nodes-base.set',
-      lamaticType: 'LLMNode',
+      lamaticType: 'variablesNode',
       isSupported: true,
       parameterMappings: [
-        { n8nParameter: 'values', lamaticParameter: 'fields', required: true },
-        { n8nParameter: 'options.dotNotation', lamaticParameter: 'dotNotation', required: false, defaultValue: true },
-        { n8nParameter: 'options.include', lamaticParameter: 'include', required: false, defaultValue: 'all' },
+        // We'll stringify the mapping at creation time to match variablesNode schema
+        { n8nParameter: 'values', lamaticParameter: 'mapping', required: true },
       ],
       credentialMappings: [],
       notes: 'Set/transform data fields in the workflow',
     });
 
-    // Merge Node Mapping
+    // Merge Node Mapping → codeNode (data merging logic)
     this.addMapping({
       n8nType: 'n8n-nodes-base.merge',
-      lamaticType: 'LLMNode',
+      lamaticType: 'codeNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'mode', lamaticParameter: 'mode', required: true, defaultValue: 'append' },
@@ -227,16 +214,17 @@ export class NodeMapper {
       notes: 'Gmail integration for sending and managing emails',
     });
 
-    // Google Sheets Node Mapping
+    // Google Sheets Node Mapping (schema-supported)
     this.addMapping({
       n8nType: 'n8n-nodes-base.googleSheets',
-      lamaticType: 'LLMNode',
+      lamaticType: 'googleSheetsNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'append' },
         { n8nParameter: 'resource', lamaticParameter: 'resource', required: true, defaultValue: 'sheet' },
-        { n8nParameter: 'sheetId', lamaticParameter: 'spreadsheetId', required: true },
-        { n8nParameter: 'sheetName', lamaticParameter: 'sheetName', required: false, defaultValue: 'Sheet1' },
+        { n8nParameter: 'documentId', lamaticParameter: 'spreadsheetId', required: false, transform: (v: any) => (v && typeof v === 'object' && v.value !== undefined ? v.value : v) },
+        { n8nParameter: 'sheetId', lamaticParameter: 'spreadsheetId', required: false, transform: (v: any) => (v && typeof v === 'object' && v.value !== undefined ? v.value : v) },
+        { n8nParameter: 'sheetName', lamaticParameter: 'sheetName', required: false, defaultValue: 'Sheet1', transform: (v: any) => (v && typeof v === 'object' && v.value !== undefined ? v.value : v) },
         { n8nParameter: 'range', lamaticParameter: 'range', required: false },
         { n8nParameter: 'options', lamaticParameter: 'options', required: false },
       ],
@@ -246,23 +234,7 @@ export class NodeMapper {
       notes: 'Google Sheets integration for data manipulation',
     });
 
-    // Airtable Node Mapping
-    this.addMapping({
-      n8nType: 'n8n-nodes-base.airtable',
-      lamaticType: 'LLMNode',
-      isSupported: true,
-      parameterMappings: [
-        { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'create' },
-        { n8nParameter: 'application', lamaticParameter: 'baseId', required: true },
-        { n8nParameter: 'table', lamaticParameter: 'tableName', required: true },
-        { n8nParameter: 'fields', lamaticParameter: 'fields', required: false },
-        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
-      ],
-      credentialMappings: [
-        { n8nCredential: 'airtableApi', lamaticCredential: 'airtable', requiresReauth: true }
-      ],
-      notes: 'Airtable database operations',
-    });
+    // Airtable Node Mapping - REMOVED (duplicate, see line 688-691 for correct mapping to airtableNode)
 
     // Microsoft Teams Node Mapping
     this.addMapping({
@@ -283,11 +255,11 @@ export class NodeMapper {
       notes: 'Microsoft Teams messaging and collaboration',
     });
 
-    // Discord Node Mapping
+    // Discord Node Mapping (no schema-equivalent → mark unsupported to trigger placeholder)
     this.addMapping({
       n8nType: 'n8n-nodes-base.discord',
-      lamaticType: 'LLMNode',
-      isSupported: true,
+      lamaticType: 'placeholderNode',
+      isSupported: false,
       parameterMappings: [
         { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'sendMessage' },
         { n8nParameter: 'resource', lamaticParameter: 'resource', required: true, defaultValue: 'message' },
@@ -304,7 +276,7 @@ export class NodeMapper {
     // Notion Node Mapping
     this.addMapping({
       n8nType: 'n8n-nodes-base.notion',
-      lamaticType: 'LLMNode',
+      lamaticType: 'notionNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'create' },
@@ -318,6 +290,585 @@ export class NodeMapper {
         { n8nCredential: 'notionApi', lamaticCredential: 'notion', requiresReauth: true }
       ],
       notes: 'Notion workspace management',
+    });
+
+    // ==========================================
+    // PHASE 3: ADDITIONAL N8N NODE MAPPINGS
+    // ==========================================
+
+    // Memory Manager Mapping → memoryNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.memoryManager',
+      lamaticType: 'memoryNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'mode', lamaticParameter: 'mode', required: false, defaultValue: 'insert' },
+        { n8nParameter: 'messages', lamaticParameter: 'messages', required: false },
+        { n8nParameter: 'sessionKey', lamaticParameter: 'sessionId', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Memory management for conversation context',
+    });
+
+    // Aggregate Node → codeNode (data processing)
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.aggregate',
+      lamaticType: 'codeNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'aggregate', lamaticParameter: 'aggregate', required: false },
+        { n8nParameter: 'destinationFieldName', lamaticParameter: 'destinationField', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Aggregate data from multiple items',
+    });
+
+    // Limit Node → codeNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.limit',
+      lamaticType: 'codeNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'limit', lamaticParameter: 'limit', required: false },
+        { n8nParameter: 'keep', lamaticParameter: 'keep', required: false, defaultValue: 'first' },
+      ],
+      credentialMappings: [],
+      notes: 'Limit number of items',
+    });
+
+    // Chain LLM → LLMNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.chainLlm',
+      lamaticType: 'LLMNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'text', lamaticParameter: 'prompt', required: false },
+        { n8nParameter: 'messages', lamaticParameter: 'messages', required: false },
+        { n8nParameter: 'promptType', lamaticParameter: 'promptType', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'LLM chain for text generation',
+    });
+
+    // OpenAI (Speech to Text) → extractFromFileNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.openAi',
+      lamaticType: 'extractFromFileNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'resource', lamaticParameter: 'resource', required: true },
+        { n8nParameter: 'operation', lamaticParameter: 'operation', required: true },
+        { n8nParameter: 'binaryPropertyName', lamaticParameter: 'fileProperty', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'openAiApi', lamaticCredential: 'openai', requiresReauth: true }
+      ],
+      notes: 'OpenAI speech to text and image generation',
+    });
+
+    // Respond to Webhook → webhookTriggerNode (handled in trigger)
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.respondToWebhook',
+      lamaticType: 'webhookTriggerNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'respondWith', lamaticParameter: 'responseMode', required: false },
+        { n8nParameter: 'responseData', lamaticParameter: 'responseData', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Response handling for webhook triggers',
+    });
+
+    // Form Trigger → webhookTriggerNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.formTrigger',
+      lamaticType: 'webhookTriggerNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'options.path', lamaticParameter: 'path', required: false },
+        { n8nParameter: 'formTitle', lamaticParameter: 'formTitle', required: false },
+        { n8nParameter: 'formFields', lamaticParameter: 'formFields', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Form-based webhook trigger',
+    });
+
+    // Execute Workflow → flowNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.executeWorkflow',
+      lamaticType: 'flowNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'workflowId', lamaticParameter: 'flowId', required: true },
+        { n8nParameter: 'mode', lamaticParameter: 'mode', required: false },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Execute another workflow/flow',
+    });
+
+    // Execute Workflow Trigger → webhookTriggerNode (it's a trigger, needs to be detected as such)
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.executeWorkflowTrigger',
+      lamaticType: 'webhookTriggerNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'workflowInputs', lamaticParameter: 'workflowInputs', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Trigger for executed workflow (sub-workflow entry point)',
+    });
+
+    // Filter Node → conditionNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.filter',
+      lamaticType: 'conditionNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'conditions', lamaticParameter: 'conditions', required: true },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Filter items based on conditions',
+    });
+
+    // Execution Data → variablesNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.executionData',
+      lamaticType: 'variablesNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'dataToSave', lamaticParameter: 'dataToSave', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Store execution data as variables',
+    });
+
+    // Chat Trigger → chatTriggerNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.chatTrigger',
+      lamaticType: 'chatTriggerNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'public', lamaticParameter: 'public', required: false },
+        { n8nParameter: 'initialMessages', lamaticParameter: 'initialMessages', required: false },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Chat interface trigger',
+    });
+
+    // Wikipedia Tool → apiNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.toolWikipedia',
+      lamaticType: 'apiNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'query', lamaticParameter: 'query', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Wikipedia search tool via API',
+    });
+
+    // Groq Chat Model → LLMNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.lmChatGroq',
+      lamaticType: 'LLMNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'model', lamaticParameter: 'model', required: true },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'groqApi', lamaticCredential: 'groq', requiresReauth: true }
+      ],
+      notes: 'Groq LLM integration',
+    });
+
+    // OpenAI Chat Model → LLMNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.lmChatOpenAi',
+      lamaticType: 'LLMNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'model', lamaticParameter: 'model', required: true },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'openAiApi', lamaticCredential: 'openai', requiresReauth: true }
+      ],
+      notes: 'OpenAI LLM chat model',
+    });
+
+    // Google Drive → googleDriveNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.googleDrive',
+      lamaticType: 'googleDriveNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'operation', lamaticParameter: 'operation', required: true },
+        { n8nParameter: 'fileId', lamaticParameter: 'fileId', required: false },
+        { n8nParameter: 'folderId', lamaticParameter: 'folderId', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'googleDriveOAuth2', lamaticCredential: 'googleDrive', requiresReauth: true }
+      ],
+      notes: 'Google Drive file operations',
+    });
+
+    // Edit Image → codeNode (image processing)
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.editImage',
+      lamaticType: 'codeNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'operation', lamaticParameter: 'operation', required: true },
+        { n8nParameter: 'width', lamaticParameter: 'width', required: false },
+        { n8nParameter: 'height', lamaticParameter: 'height', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Image editing and resizing',
+    });
+
+    // Document Default Data Loader → extractFromFileNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.documentDefaultDataLoader',
+      lamaticType: 'extractFromFileNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'loader', lamaticParameter: 'loaderType', required: true },
+        { n8nParameter: 'dataType', lamaticParameter: 'dataType', required: false },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Load documents from various formats',
+    });
+
+    // Text Splitter → chunkNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter',
+      lamaticType: 'chunkNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'chunkSize', lamaticParameter: 'numOfChars', required: false, defaultValue: 1000 },
+        { n8nParameter: 'chunkOverlap', lamaticParameter: 'overlapChars', required: false, defaultValue: 200 },
+        { n8nParameter: 'separators', lamaticParameter: 'separators', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Split text into chunks',
+    });
+
+    // Chain Retrieval QA → RAGNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.chainRetrievalQa',
+      lamaticType: 'RAGNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'RAG-based question answering',
+    });
+
+    // Retriever Vector Store → searchNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.retrieverVectorStore',
+      lamaticType: 'searchNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'topK', lamaticParameter: 'limit', required: false, defaultValue: 10 },
+      ],
+      credentialMappings: [],
+      notes: 'Vector store retriever for semantic search',
+    });
+
+    // Vector Store Supabase → vectorNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.vectorStoreSupabase',
+      lamaticType: 'vectorNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'mode', lamaticParameter: 'action', required: true },
+        { n8nParameter: 'tableName', lamaticParameter: 'vectorDB', required: true },
+        { n8nParameter: 'options.queryName', lamaticParameter: 'queryName', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'supabaseApi', lamaticCredential: 'supabase', requiresReauth: true }
+      ],
+      notes: 'Supabase vector store operations',
+    });
+
+    // Embeddings OpenAI → vectorizeNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.embeddingsOpenAi',
+      lamaticType: 'vectorizeNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'model', lamaticParameter: 'model', required: true },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'openAiApi', lamaticCredential: 'openai', requiresReauth: true }
+      ],
+      notes: 'Generate embeddings for vectorization',
+    });
+
+    // Read/Write File → extractFromFileNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.readWriteFile',
+      lamaticType: 'extractFromFileNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'operation', lamaticParameter: 'operation', required: true },
+        { n8nParameter: 'fileName', lamaticParameter: 'filePath', required: false },
+        { n8nParameter: 'fileSelector', lamaticParameter: 'filePath', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Read or write files',
+    });
+
+    // Compression → codeNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.compression',
+      lamaticType: 'codeNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'operation', lamaticParameter: 'operation', required: true },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Compress or extract archives',
+    });
+
+    // Supabase → postgresNode (mapped to PostgreSQL node in Lamatic)
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.supabase',
+      lamaticType: 'postgresNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'operation', lamaticParameter: 'action', required: true },
+        { n8nParameter: 'tableId', lamaticParameter: 'tables', required: false },
+        { n8nParameter: 'returnAll', lamaticParameter: 'returnAll', required: false },
+        { n8nParameter: 'filters', lamaticParameter: 'filters', required: false },
+        { n8nParameter: 'fieldsUi', lamaticParameter: 'fieldsUi', required: false },
+        { n8nParameter: 'matchType', lamaticParameter: 'matchType', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'supabaseApi', lamaticCredential: 'supabase', requiresReauth: true }
+      ],
+      notes: 'Supabase database operations mapped to postgresNode',
+    });
+
+    // HTTP Request → apiNode (better mapping than LLMNode)
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.httpRequest',
+      lamaticType: 'apiNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'url', lamaticParameter: 'url', required: true },
+        { n8nParameter: 'method', lamaticParameter: 'method', required: true },
+        { n8nParameter: 'headerParameters', lamaticParameter: 'headers', required: false },
+        { n8nParameter: 'bodyParameters', lamaticParameter: 'body', required: false },
+        { n8nParameter: 'options.timeout', lamaticParameter: 'timeout', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'HTTP request for API calls',
+    });
+
+    // Airtable → airtableNode (fix: should use proper schema if exists)
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.airtable',
+      lamaticType: 'airtableNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'create' },
+        { n8nParameter: 'base', lamaticParameter: 'baseId', required: true },
+        { n8nParameter: 'table', lamaticParameter: 'tableName', required: true },
+        { n8nParameter: 'fields', lamaticParameter: 'fields', required: false },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'airtableTokenApi', lamaticCredential: 'airtable', requiresReauth: true }
+      ],
+      notes: 'Airtable database operations',
+    });
+
+    // ==========================================
+    // ADDITIONAL UNMAPPED NODE TYPES
+    // ==========================================
+
+    // Anthropic Claude LLM → LLMNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.lmChatAnthropic',
+      lamaticType: 'LLMNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'model', lamaticParameter: 'model', required: true },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'anthropicApi', lamaticCredential: 'anthropic', requiresReauth: true }
+      ],
+      notes: 'Anthropic Claude LLM integration',
+    });
+
+    // No Operation Node → codeNode (passthrough)
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.noOp',
+      lamaticType: 'codeNode',
+      isSupported: true,
+      parameterMappings: [],
+      credentialMappings: [],
+      notes: 'No-operation passthrough node',
+    });
+
+    // Perplexity API → apiNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.perplexity',
+      lamaticType: 'apiNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'query', lamaticParameter: 'query', required: true },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'perplexityApi', lamaticCredential: 'perplexity', requiresReauth: true }
+      ],
+      notes: 'Perplexity AI search API',
+    });
+
+    // Split in Batches → codeNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.splitInBatches',
+      lamaticType: 'codeNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'batchSize', lamaticParameter: 'batchSize', required: false, defaultValue: 10 },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Split data into batches for processing',
+    });
+
+    // Wait Node → codeNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.wait',
+      lamaticType: 'codeNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'amount', lamaticParameter: 'amount', required: false, defaultValue: 1 },
+        { n8nParameter: 'unit', lamaticParameter: 'unit', required: false, defaultValue: 'seconds' },
+      ],
+      credentialMappings: [],
+      notes: 'Wait/delay node for timing control',
+    });
+
+    // Output Parser Structured → codeNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.outputParserStructured',
+      lamaticType: 'codeNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'jsonSchemaExample', lamaticParameter: 'jsonSchemaExample', required: false },
+        { n8nParameter: 'schema', lamaticParameter: 'schema', required: false },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Structured output parser for LLM responses',
+    });
+
+    // Tool Code → codeNode
+    this.addMapping({
+      n8nType: '@n8n/n8n-nodes-langchain.toolCode',
+      lamaticType: 'codeNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'code', lamaticParameter: 'code', required: true },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Code execution tool for LLM agents',
+    });
+
+    // Notion Tool → notionNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.notionTool',
+      lamaticType: 'notionNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'create' },
+        { n8nParameter: 'resource', lamaticParameter: 'resource', required: true, defaultValue: 'page' },
+        { n8nParameter: 'databaseId', lamaticParameter: 'databaseId', required: false },
+        { n8nParameter: 'pageId', lamaticParameter: 'pageId', required: false },
+        { n8nParameter: 'properties', lamaticParameter: 'properties', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'notionApi', lamaticCredential: 'notion', requiresReauth: true }
+      ],
+      notes: 'Notion tool for LLM agents',
+    });
+
+    // Gmail Trigger → webhookTriggerNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.gmailTrigger',
+      lamaticType: 'webhookTriggerNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'event', lamaticParameter: 'event', required: false },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'gmailOAuth2', lamaticCredential: 'gmail', requiresReauth: true }
+      ],
+      notes: 'Gmail trigger for incoming emails',
+    });
+
+    // Google Sheets Tool → googleSheetsNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.googleSheetsTool',
+      lamaticType: 'googleSheetsNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'operation', lamaticParameter: 'operation', required: true, defaultValue: 'append' },
+        { n8nParameter: 'resource', lamaticParameter: 'resource', required: true, defaultValue: 'sheet' },
+        { n8nParameter: 'sheetId', lamaticParameter: 'spreadsheetId', required: true },
+        { n8nParameter: 'sheetName', lamaticParameter: 'sheetName', required: false, defaultValue: 'Sheet1' },
+        { n8nParameter: 'range', lamaticParameter: 'range', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'googleSheetsOAuth2', lamaticCredential: 'googleSheets', requiresReauth: true }
+      ],
+      notes: 'Google Sheets tool for LLM agents',
+    });
+
+    // Google Sheets Trigger → webhookTriggerNode
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.googleSheetsTrigger',
+      lamaticType: 'webhookTriggerNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'event', lamaticParameter: 'event', required: false },
+        { n8nParameter: 'sheetId', lamaticParameter: 'sheetId', required: false },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'googleSheetsOAuth2', lamaticCredential: 'googleSheets', requiresReauth: true }
+      ],
+      notes: 'Google Sheets trigger for sheet changes',
+    });
+
+    // Form Node → webhookTriggerNode (form submission)
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.form',
+      lamaticType: 'webhookTriggerNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'formTitle', lamaticParameter: 'formTitle', required: false },
+        { n8nParameter: 'formFields', lamaticParameter: 'formFields', required: false },
+        { n8nParameter: 'options.path', lamaticParameter: 'path', required: false },
+      ],
+      credentialMappings: [],
+      notes: 'Form submission webhook trigger',
     });
 
   }
@@ -358,12 +909,129 @@ export class NodeMapper {
     // Create Lamatic node with exact format
     const lamaticNode = this.createLamaticNode(n8nNode, nodeId, mapping, warnings);
 
+    // Schema presence check (fallback to placeholder if missing, per user direction)
+    const schema = ALL_SCHEMAS[lamaticNode.nodeType];
+    if (!schema) {
+      warnings.push(`No schema found for nodeType ${lamaticNode.nodeType} - creating placeholder`);
+      return {
+        lamaticNode: this.createPlaceholderNode(n8nNode, nodeId),
+        requiresManualSetup: true,
+        requiresReauth: mapping.credentialMappings?.some(cred => cred.requiresReauth) || false,
+        warnings,
+      };
+    }
+
+    // Validate against schema (warn by default, strict via env)
+    const { valid, errors: schemaErrors } = validateAgainstSchema(lamaticNode, schema);
+    if (!valid) {
+      if (isStrictMode()) {
+        warnings.push(`Schema validation failed (strict): ${schemaErrors.join('; ')}`);
+        return {
+          lamaticNode: this.createPlaceholderNode(n8nNode, nodeId),
+          requiresManualSetup: true,
+          requiresReauth: mapping.credentialMappings?.some(cred => cred.requiresReauth) || false,
+          warnings,
+        };
+      }
+      // warn and keep
+      warnings.push(`Schema validation warnings: ${schemaErrors.join('; ')}`);
+    }
+
     return {
       lamaticNode,
       requiresManualSetup: mapping.requiresManualSetup || false,
       requiresReauth: mapping.credentialMappings?.some(cred => cred.requiresReauth) || false,
       warnings,
     };
+  }
+
+  /**
+   * Cleans $json references from string values (removes n8n expression syntax)
+   * $json references should only be in code, not in node values
+   */
+  private cleanJsonReferences(value: any): string {
+    if (typeof value !== 'string') {
+      return value ? String(value) : '';
+    }
+    
+    // Remove n8n expression syntax: {{ $json.field }}, ={{ $json.field }}, etc.
+    let cleaned = value
+      .replace(/\{\{\s*\$json[^}]*\}\}/g, '') // Remove {{ $json... }}
+      .replace(/=\{\{\s*\$json[^}]*\}\}/g, '') // Remove ={{ $json... }}
+      .replace(/\$json\.[^\s}]*/g, '') // Remove $json.field references
+      .replace(/\{\{.*?\}\}/g, '') // Remove any remaining {{ ... }}
+      .trim();
+    
+    // If result is empty or only whitespace, return empty string
+    if (!cleaned || cleaned.length === 0) {
+      return '';
+    }
+    
+    return cleaned;
+  }
+
+  /**
+   * Cleans conditions array from $json references
+   */
+  private cleanConditionsFromJson(conditions: any): any {
+    if (!conditions) return conditions;
+    
+    if (Array.isArray(conditions)) {
+      return conditions.map((cond: any) => {
+        if (typeof cond === 'object' && cond !== null) {
+          const cleaned: any = { ...cond };
+          // Clean leftValue and rightValue if they contain $json
+          if (cleaned.leftValue && typeof cleaned.leftValue === 'string') {
+            cleaned.leftValue = this.cleanJsonReferences(cleaned.leftValue);
+          }
+          if (cleaned.rightValue && typeof cleaned.rightValue === 'string') {
+            cleaned.rightValue = this.cleanJsonReferences(cleaned.rightValue);
+          }
+          if (cleaned.keyValue && typeof cleaned.keyValue === 'string') {
+            cleaned.keyValue = this.cleanJsonReferences(cleaned.keyValue);
+          }
+          return cleaned;
+        }
+        return cond;
+      });
+    }
+    
+    if (typeof conditions === 'object' && conditions.conditions) {
+      return {
+        ...conditions,
+        conditions: this.cleanConditionsFromJson(conditions.conditions)
+      };
+    }
+    
+    return conditions;
+  }
+
+  /**
+   * Cleans rule object from $json references
+   */
+  private cleanRuleFromJson(rule: any): any {
+    if (!rule || typeof rule !== 'object') return rule;
+    
+    const cleaned: any = { ...rule };
+    
+    if (cleaned.conditions && cleaned.conditions.conditions) {
+      cleaned.conditions = this.cleanConditionsFromJson(cleaned.conditions);
+    }
+    
+    return cleaned;
+  }
+
+  /**
+   * Escapes SQL values properly
+   */
+  private escapeSqlValue(value: string): string {
+    // If it's already a valid SQL literal (number, boolean), return as-is
+    if (/^\d+$/.test(value)) return value;
+    if (value === 'true' || value === 'false' || value === 'NULL') return value;
+    
+    // Escape single quotes for SQL strings
+    const escaped = value.replace(/'/g, "''");
+    return `'${escaped}'`;
   }
 
   /**
@@ -386,22 +1054,72 @@ export class NodeMapper {
     // Create specific node types with exact format
     switch (mapping.lamaticType) {
       case 'webhookTriggerNode':
+        // Handle different trigger types
+        const isFormTrigger = n8nNode.type === 'n8n-nodes-base.formTrigger' || n8nNode.type === 'n8n-nodes-base.form';
+        const isExecuteWorkflowTrigger = n8nNode.type === 'n8n-nodes-base.executeWorkflowTrigger';
+        
+        let path: string;
+        let method: string;
+        let description: string;
+        
+        if (isFormTrigger) {
+          path = this.getNestedValue(n8nNode.parameters, 'options.path') || 
+                 this.getNestedValue(n8nNode.parameters, 'path') || 
+                 '/form';
+          method = this.getNestedValue(n8nNode.parameters, 'httpMethod') || 'POST';
+          description = `Form submission endpoint: ${this.getNestedValue(n8nNode.parameters, 'formTitle') || 'Form'}`;
+        } else if (isExecuteWorkflowTrigger) {
+          path = '/workflow-trigger';
+          method = 'POST';
+          description = 'Workflow execution trigger (sub-workflow entry point)';
+        } else {
+          path = this.getNestedValue(n8nNode.parameters, 'path') || 'slack-bot';
+          method = this.getNestedValue(n8nNode.parameters, 'httpMethod') || 'POST';
+          description = `Webhook endpoint: ${path}`;
+        }
+        
+        const values: any = {
+          path,
+          method,
+          description,
+        };
+        
+        // Add form-specific fields if this is a form trigger
+        if (isFormTrigger) {
+          const formTitle = this.getNestedValue(n8nNode.parameters, 'formTitle');
+          const formFields = this.getNestedValue(n8nNode.parameters, 'formFields');
+          if (formTitle) values.formTitle = formTitle;
+          if (formFields) values.formFields = formFields;
+        }
+        
+        // Add workflow inputs if this is an executeWorkflowTrigger
+        if (isExecuteWorkflowTrigger) {
+          const workflowInputs = this.getNestedValue(n8nNode.parameters, 'workflowInputs');
+          if (workflowInputs) values.workflowInputs = workflowInputs;
+        }
+        
         return {
           ...baseNode,
-          values: {
-            path: this.getNestedValue(n8nNode.parameters, 'path') || 'slack-bot',
-            method: this.getNestedValue(n8nNode.parameters, 'httpMethod') || 'POST',
-            description: `Webhook endpoint: ${this.getNestedValue(n8nNode.parameters, 'path') || 'slack-bot'}`,
-          },
+          values,
           'x-runtime': xRuntime,
           '_flowMetadata': flowMetadata,
         };
 
       case 'LLMNode':
+        // Handle all LLM node types
         if (n8nNode.type === '@n8n/n8n-nodes-langchain.lmChatGoogleGemini') {
+          // Extract model name from n8n parameters
+          const modelName = this.getNestedValue(n8nNode.parameters, 'modelName') || 'models/gemini-1.5-flash-latest';
           return {
             ...baseNode,
             values: {
+              generativeModelName: {
+                credentialId: '',
+                credential_name: '',
+                model_name: modelName,
+                provider_name: 'google',
+                type: 'generator/text'
+              },
               prompts: [
                 {
                   id: this.generatePromptId(),
@@ -414,7 +1132,7 @@ export class NodeMapper {
                   role: 'user'
                 }
               ],
-              tools: ['chat_completion', 'text_generation'],
+              tools: [],
               credentials: '',
               messages: '[]',
               memories: '[]',
@@ -424,9 +1142,18 @@ export class NodeMapper {
             '_flowMetadata': flowMetadata,
           };
         } else if (n8nNode.type === '@n8n/n8n-nodes-langchain.memoryBufferWindow') {
+          // Memory nodes - add minimal generativeModelName to prevent schema validation errors
+          // Note: Memory nodes semantically don't need a model, but schema requires it
           return {
             ...baseNode,
             values: {
+              generativeModelName: {
+                credentialId: '',
+                credential_name: '',
+                model_name: 'memory-buffer',
+                provider_name: 'lamatic',
+                type: 'generator/text'
+              },
               prompts: [
                 {
                   id: this.generatePromptId(),
@@ -439,7 +1166,53 @@ export class NodeMapper {
                   role: 'user'
                 }
               ],
-              tools: ['memory_management', 'conversation_history'],
+              tools: [],
+              credentials: '',
+              messages: '[]',
+              memories: '[]',
+              attachments: ''
+            },
+            'x-runtime': xRuntime,
+            '_flowMetadata': flowMetadata,
+          };
+        } else if (n8nNode.type === '@n8n/n8n-nodes-langchain.lmChatGroq' || 
+                   n8nNode.type === '@n8n/n8n-nodes-langchain.lmChatOpenAi' ||
+                   n8nNode.type === '@n8n/n8n-nodes-langchain.chainLlm' ||
+                   n8nNode.type === '@n8n/n8n-nodes-langchain.lmChatAnthropic') {
+          // Groq, OpenAI Chat, Chain LLM, or Anthropic Claude
+          const model = this.getNestedValue(n8nNode.parameters, 'model') || 
+                        this.getNestedValue(n8nNode.parameters, 'modelName') || 
+                        (n8nNode.type.includes('Anthropic') ? 'claude-3-5-sonnet-20241022' : 'gpt-4');
+          const provider = n8nNode.type.includes('Groq') ? 'groq' : 
+                          n8nNode.type.includes('Gemini') ? 'google' :
+                          n8nNode.type.includes('Anthropic') ? 'anthropic' : 'openai';
+          
+          return {
+            ...baseNode,
+            values: {
+              generativeModelName: {
+                credentialId: '',
+                credential_name: '',
+                model_name: model,
+                provider_name: provider,
+                type: 'generator/text'
+              },
+              prompts: [
+                {
+                  id: this.generatePromptId(),
+                  content: this.getNestedValue(n8nNode.parameters, 'options.systemMessage') || 
+                          this.getNestedValue(n8nNode.parameters, 'messages.messageValues')?.find((m: any) => m.type === 'AIMessagePromptTemplate')?.message ||
+                          'You are a helpful AI assistant.',
+                  role: 'system'
+                },
+                {
+                  id: this.generatePromptId(),
+                  content: this.getNestedValue(n8nNode.parameters, 'text') || 
+                          'Process the input and provide a helpful response.',
+                  role: 'user'
+                }
+              ],
+              tools: [],
               credentials: '',
               messages: '[]',
               memories: '[]',
@@ -449,12 +1222,23 @@ export class NodeMapper {
             '_flowMetadata': flowMetadata,
           };
         }
+        // Fallback for other LLMNode mappings
         break;
 
       case 'agentNode':
+        // Extract model info - agent nodes need generativeModelName from the connected LLM
+        // Default to Gemini if not found
+        const defaultModelName = 'models/gemini-1.5-flash-latest';
         return {
           ...baseNode,
           values: {
+            generativeModelName: {
+              credentialId: '',
+              credential_name: '',
+              model_name: defaultModelName,
+              provider_name: 'google',
+              type: 'generator/text'
+            },
             prompts: [
               {
                 id: this.generatePromptId(),
@@ -463,18 +1247,18 @@ export class NodeMapper {
               },
               {
                 id: this.generatePromptId(),
-                content: this.getNestedValue(n8nNode.parameters, 'text') || '={{ $json.body.text }}',
+                content: this.cleanJsonReferences(this.getNestedValue(n8nNode.parameters, 'text') || 'Process the input and provide a helpful response.'),
                 role: 'user'
               }
             ],
             agents: [
               {
-                name: 'Creative Director',
-                description: 'Generates multiple creative concepts for marketing assets',
-                schema: {}
+                name: 'Agent',
+                description: 'AI agent for processing and responding to queries',
+                schema: '{}'
               }
             ],
-            tools: ['image_generation', 'content_creation', 'brand_guidelines'],
+            tools: [],
             messages: '[]',
             stopWord: '',
             maxIterations: this.getNestedValue(n8nNode.parameters, 'options.maxIterations') || 5,
@@ -485,23 +1269,43 @@ export class NodeMapper {
         };
 
       case 'slackNode':
+        // Extract channel from channelId parameter (can be object with value or direct value)
+        let channelName = '';
+        const channelIdParam = this.getNestedValue(n8nNode.parameters, 'channelId');
+        if (channelIdParam) {
+          if (typeof channelIdParam === 'object' && channelIdParam.value !== undefined) {
+            channelName = channelIdParam.value;
+          } else if (typeof channelIdParam === 'string') {
+            channelName = channelIdParam;
+          }
+        }
+        
         return {
           ...baseNode,
           values: {
             credentials: '',
-            action: 'postMessage',
-            channel: '',
-            message: this.getNestedValue(n8nNode.parameters, 'text') || '={{ $json.body.user_name }}: {{ $json.body.text }}\n\nEffibotics Bot: {{ $json.output.removeMarkdown() }} ',
-            thread_ts: '',
-            username: '',
-            icon_emoji: '',
-            icon_url: ''
+            channelName: channelName,
+            action: this.getNestedValue(n8nNode.parameters, 'operation') || 'postMessage',
+            text: this.cleanJsonReferences(this.getNestedValue(n8nNode.parameters, 'text') || ''),
+            command: '',
+            immediateResponseData: ''
           },
           'x-runtime': {
             ...xRuntime,
             actionRequired: true,
             actionRequiredReason: 'Slack credentials missing (values.credentials is empty). Provide Slack API token in node credentials.',
           },
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'variablesNode':
+        return {
+          ...baseNode,
+          values: {
+            // variablesNode.mapping must be a JSON string
+            mapping: JSON.stringify(this.getNestedValue(n8nNode.parameters, 'values') || {})
+          },
+          'x-runtime': xRuntime,
           '_flowMetadata': flowMetadata,
         };
 
@@ -518,18 +1322,7 @@ export class NodeMapper {
           '_flowMetadata': flowMetadata,
         };
 
-      case 'mergeNode':
-        return {
-          ...baseNode,
-          values: {
-            mode: this.getNestedValue(n8nNode.parameters, 'mode') || 'append',
-            mergeByFields: this.getNestedValue(n8nNode.parameters, 'mergeByFields') || [],
-            clashHandling: this.getNestedValue(n8nNode.parameters, 'options.clashHandling') || 'preferInput1',
-            inputCount: 2,
-          },
-          'x-runtime': xRuntime,
-          '_flowMetadata': flowMetadata,
-        };
+      // mergeNode case removed - merge nodes are now mapped to codeNode
 
       case 'switchNode':
         return {
@@ -565,16 +1358,32 @@ export class NodeMapper {
         };
 
       case 'googleSheetsNode':
+        // Handle both documentId and sheetId (n8n uses documentId for spreadsheet ID)
+        const spreadsheetId = this.getNestedValue(n8nNode.parameters, 'documentId') || 
+                             this.getNestedValue(n8nNode.parameters, 'sheetId') || '';
+        const sheetNameParam = this.getNestedValue(n8nNode.parameters, 'sheetName');
+        let sheetName = 'Sheet1';
+        if (sheetNameParam) {
+          // Handle __rl object format
+          if (typeof sheetNameParam === 'object' && sheetNameParam.value !== undefined) {
+            sheetName = sheetNameParam.value;
+          } else if (typeof sheetNameParam === 'string') {
+            sheetName = sheetNameParam;
+          }
+        }
+        
         return {
           ...baseNode,
           values: {
             credentials: '',
             operation: this.getNestedValue(n8nNode.parameters, 'operation') || 'append',
             resource: this.getNestedValue(n8nNode.parameters, 'resource') || 'sheet',
-            spreadsheetId: this.getNestedValue(n8nNode.parameters, 'sheetId') || '',
-            sheetName: this.getNestedValue(n8nNode.parameters, 'sheetName') || 'Sheet1',
+            spreadsheetId: spreadsheetId,
+            sheetName: sheetName,
             range: this.getNestedValue(n8nNode.parameters, 'range') || '',
             options: this.getNestedValue(n8nNode.parameters, 'options') || {},
+            // Preserve columns mapping if present (for append operations)
+            columns: this.getNestedValue(n8nNode.parameters, 'columns') || undefined,
           },
           'x-runtime': xRuntime,
           '_flowMetadata': flowMetadata,
@@ -641,6 +1450,566 @@ export class NodeMapper {
           'x-runtime': xRuntime,
           '_flowMetadata': flowMetadata,
         };
+
+      case 'airtableNode':
+        // Extract base and table - handle both object with value and direct value
+        const baseParam = this.getNestedValue(n8nNode.parameters, 'base');
+        const tableParam = this.getNestedValue(n8nNode.parameters, 'table');
+        let baseId = '';
+        let tableName = '';
+        
+        if (typeof baseParam === 'object' && baseParam?.value !== undefined) {
+          baseId = baseParam.value;
+        } else if (typeof baseParam === 'string') {
+          baseId = baseParam;
+        }
+        
+        if (typeof tableParam === 'object' && tableParam?.value !== undefined) {
+          tableName = tableParam.value;
+        } else if (typeof tableParam === 'string') {
+          tableName = tableParam;
+        }
+
+        return {
+          ...baseNode,
+          values: {
+            credentials: '',
+            operation: this.getNestedValue(n8nNode.parameters, 'operation') || 'create',
+            baseId: baseId,
+            tableName: tableName,
+            fields: this.getNestedValue(n8nNode.parameters, 'fields') || {},
+            options: this.getNestedValue(n8nNode.parameters, 'options') || {},
+          },
+          'x-runtime': {
+            ...xRuntime,
+            actionRequired: true,
+            actionRequiredReason: 'Airtable credentials missing (values.credentials is empty). Provide Airtable API token in node credentials.',
+          },
+          '_flowMetadata': flowMetadata,
+        };
+
+      // ==========================================
+      // PHASE 3: ADDITIONAL NODE TYPE CREATION
+      // ==========================================
+
+      case 'memoryNode':
+        return {
+          ...baseNode,
+          values: {
+            sessionId: this.getNestedValue(n8nNode.parameters, 'sessionKey') || '',
+            memoryCollection: 'default',
+            uniqueId: nodeId,
+            metadata: '{}',
+            memoryValue: [],
+            embeddingModelName: {
+              credentialId: '',
+              credential_name: '',
+              model_name: 'text-embedding-3-small',
+              provider_name: 'openai',
+              type: 'embedding'
+            },
+            generativeModelName: {
+              credentialId: '',
+              credential_name: '',
+              model_name: 'gpt-4',
+              provider_name: 'openai',
+              type: 'generator/text'
+            }
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'codeNode':
+        // Handle Structured Output Parser - preserve jsonSchemaExample
+        if (n8nNode.type === '@n8n/n8n-nodes-langchain.outputParserStructured') {
+          const jsonSchemaExample = this.getNestedValue(n8nNode.parameters, 'jsonSchemaExample');
+          const schema = this.getNestedValue(n8nNode.parameters, 'schema');
+          // Generate code that parses structured output based on schema
+          const parserCode = `// Structured Output Parser\n// Schema: ${jsonSchemaExample || schema || '{}'}\nconst input = $input.all();\n// Parse structured output from LLM response\ntry {\n  const parsed = typeof input[0]?.json?.output === 'string' ? JSON.parse(input[0].json.output) : input[0]?.json?.output || input[0]?.json;\n  return [{ json: parsed }];\n} catch (e) {\n  return [{ json: { error: 'Failed to parse structured output', raw: input[0]?.json } }];\n}`;
+          return {
+            ...baseNode,
+            values: {
+              code: parserCode,
+              jsonSchemaExample: jsonSchemaExample || undefined,
+              schema: schema || undefined,
+            },
+            'x-runtime': xRuntime,
+            '_flowMetadata': flowMetadata,
+          };
+        }
+        
+        // Handle different code node types (aggregate, limit, editImage, compression, merge)
+        const code = this.getNestedValue(n8nNode.parameters, 'jsCode');
+        if (code) {
+          return {
+            ...baseNode,
+            values: {
+              code: code
+            },
+            'x-runtime': xRuntime,
+            '_flowMetadata': flowMetadata,
+          };
+        }
+        
+        // Handle merge node - generate merge code
+        if (n8nNode.type === 'n8n-nodes-base.merge') {
+          const mergeMode = this.getNestedValue(n8nNode.parameters, 'mode') || 'append';
+          const mergeByFields = this.getNestedValue(n8nNode.parameters, 'mergeByFields') || [];
+          const clashHandling = this.getNestedValue(n8nNode.parameters, 'options.clashHandling') || 'preferInput1';
+          
+          let mergeCode = `// Merge node: ${mergeMode} mode\n`;
+          mergeCode += `const input = $input.all();\n`;
+          
+          if (mergeMode === 'append') {
+            mergeCode += `return input;\n`;
+          } else if (mergeMode === 'mergeByFields' && mergeByFields.length > 0) {
+            mergeCode += `// Merge by fields: ${mergeByFields.join(', ')}\n`;
+            mergeCode += `const merged = {};\n`;
+            mergeCode += `input.forEach(item => {\n`;
+            mergeCode += `  const key = ${mergeByFields.map((f: string) => `item.json.${f}`).join(' + "_" + ')};\n`;
+            mergeCode += `  if (!merged[key]) merged[key] = item.json;\n`;
+            mergeCode += `  else Object.assign(merged[key], item.json);\n`;
+            mergeCode += `});\n`;
+            mergeCode += `return Object.values(merged).map(v => ({ json: v }));\n`;
+          } else {
+            mergeCode += `// Merge mode: ${mergeMode}\n`;
+            mergeCode += `const merged = {};\n`;
+            mergeCode += `input.forEach(item => Object.assign(merged, item.json));\n`;
+            mergeCode += `return [{ json: merged }];\n`;
+          }
+          
+          return {
+            ...baseNode,
+            values: {
+              code: mergeCode
+            },
+            'x-runtime': xRuntime,
+            '_flowMetadata': flowMetadata,
+          };
+        }
+        
+        // Handle Wait node - generate delay code
+        if (n8nNode.type === 'n8n-nodes-base.wait') {
+          const amount = this.getNestedValue(n8nNode.parameters, 'amount') || 1;
+          const unit = this.getNestedValue(n8nNode.parameters, 'unit') || 'seconds';
+          const webhookId = n8nNode.webhookId;
+          
+          if (webhookId) {
+            // Resumable wait - uses webhook for resumption
+            return {
+              ...baseNode,
+              values: {
+                code: `// Wait node (resumable via webhook ${webhookId})\n// Amount: ${amount} ${unit}\n// This wait can be resumed via webhook\nconst input = $input.all();\n// Wait implementation - resume via webhook\nreturn input;`
+              },
+              'x-runtime': {
+                ...xRuntime,
+                webhookId: webhookId,
+              },
+              '_flowMetadata': flowMetadata,
+            };
+          } else {
+            // Simple delay wait
+            const delayMs = unit === 'seconds' ? amount * 1000 : 
+                           unit === 'minutes' ? amount * 60 * 1000 :
+                           unit === 'hours' ? amount * 60 * 60 * 1000 :
+                           amount * 1000; // default to seconds
+            return {
+              ...baseNode,
+              values: {
+                code: `// Wait node: ${amount} ${unit}\nconst input = $input.all();\n// Wait ${delayMs}ms\nawait new Promise(resolve => setTimeout(resolve, ${delayMs}));\nreturn input;`
+              },
+              'x-runtime': xRuntime,
+              '_flowMetadata': flowMetadata,
+            };
+          }
+        }
+        
+        // For aggregate, limit, etc. without jsCode - generate code
+        return {
+          ...baseNode,
+          values: {
+            code: `// ${n8nNode.name} - Auto-generated\n// Original n8n node type: ${n8nNode.type}\nconst input = $input.all();\nreturn input;`
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'conditionNode':
+        // Filter/condition node - clean conditions from $json references
+        const filterConditions = this.getNestedValue(n8nNode.parameters, 'conditions');
+        const cleanedConditions = this.cleanConditionsFromJson(filterConditions);
+        
+        return {
+          ...baseNode,
+          values: {
+            conditions: cleanedConditions || []
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'branchNode':
+        // Handle both if (conditions) and switch (rules) nodes
+        const ifConditions = this.getNestedValue(n8nNode.parameters, 'conditions');
+        const switchRules = this.getNestedValue(n8nNode.parameters, 'rules');
+        
+        // For switch nodes: rules is an object with rules array
+        // For if nodes: conditions is an object with conditions array
+        let branches: Array<{label: string; value: string}> = [];
+        let finalConditions: any = null;
+        let finalRules: any = null;
+        
+        if (switchRules && switchRules.rules && Array.isArray(switchRules.rules)) {
+          // Switch node with rules
+          finalRules = {
+            ...switchRules,
+            rules: switchRules.rules.map((rule: any) => this.cleanRuleFromJson(rule))
+          };
+          branches = switchRules.rules.map((rule: any, idx: number) => ({
+            label: rule.outputKey || rule.renameOutput || `Branch ${idx + 1}`,
+            value: String(idx)
+          }));
+        } else if (ifConditions && ifConditions.conditions && Array.isArray(ifConditions.conditions)) {
+          // If node with conditions object
+          finalConditions = {
+            ...ifConditions,
+            conditions: this.cleanConditionsFromJson(ifConditions.conditions)
+          };
+          branches = [
+            { label: 'True', value: '0' },
+            { label: 'False', value: '1' }
+          ];
+        } else if (Array.isArray(ifConditions)) {
+          // If node with conditions array
+          finalConditions = this.cleanConditionsFromJson(ifConditions);
+          branches = [
+            { label: 'True', value: '0' },
+            { label: 'False', value: '1' }
+          ];
+        }
+        
+        return {
+          ...baseNode,
+          values: {
+            conditions: finalConditions || ifConditions || [],
+            rules: finalRules || switchRules || null,
+            branches: branches.length > 0 ? branches : [
+              { label: 'True', value: '0' },
+              { label: 'False', value: '1' }
+            ]
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'chatTriggerNode':
+        return {
+          ...baseNode,
+          values: {
+            chat: '',
+            chatConfig: {
+              botName: n8nNode.name || 'Chat Bot',
+              greetingMessage: this.getNestedValue(n8nNode.parameters, 'initialMessages') || 'Hello! How can I help you?',
+              primaryColor: '#6366f1',
+              position: 'bottom-right',
+              displayMode: 'chat'
+            },
+            domains: []
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'apiNode':
+        const headers = this.getNestedValue(n8nNode.parameters, 'headerParameters');
+        const body = this.getNestedValue(n8nNode.parameters, 'bodyParameters');
+        return {
+          ...baseNode,
+          values: {
+            url: this.getNestedValue(n8nNode.parameters, 'url') || '',
+            method: this.getNestedValue(n8nNode.parameters, 'method') || 'GET',
+            headers: headers ? JSON.stringify(headers) : '{}',
+            body: body ? JSON.stringify(body) : '{}',
+            retries: '3',
+            retry_deplay: '1000'
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'flowNode':
+        return {
+          ...baseNode,
+          values: {
+            flowId: this.getNestedValue(n8nNode.parameters, 'workflowId') || '',
+            requestInput: JSON.stringify(this.getNestedValue(n8nNode.parameters, 'options') || {})
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'extractFromFileNode':
+        return {
+          ...baseNode,
+          values: {
+            fileUrl: this.getNestedValue(n8nNode.parameters, 'url') || 
+                     this.getNestedValue(n8nNode.parameters, 'filePath') || 
+                     this.getNestedValue(n8nNode.parameters, 'fileName') || '',
+            format: 'text',
+            encoding: 'utf-8',
+            comment: '',
+            delimiter: ',',
+            headers: true,
+            ignoreEmpty: false,
+            trim: false,
+            ltrim: false,
+            rtrim: false,
+            maxRows: '1000',
+            skipRows: '0',
+            password: '',
+            quote: '"',
+            joinPages: false,
+            returnRawText: false,
+            encodeAsBase64: false,
+            discardUnmappedColumns: false
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'chunkNode':
+        return {
+          ...baseNode,
+          values: {
+            chunkField: 'text',
+            chunkingType: 'character',
+            numOfChars: this.getNestedValue(n8nNode.parameters, 'chunkSize') || 1000,
+            overlapChars: this.getNestedValue(n8nNode.parameters, 'chunkOverlap') || 200,
+            separators: this.getNestedValue(n8nNode.parameters, 'separators') || ['\n\n', '\n', ' ', '']
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'RAGNode':
+        return {
+          ...baseNode,
+          values: {
+            queryField: 'query',
+            vectorDB: 'default',
+            limit: 10,
+            certainty: '0.7',
+            filters: '{}',
+            memories: '[]',
+            messages: '[]',
+            prompts: [
+              {
+                id: this.generatePromptId(),
+                content: 'Answer the question based on the retrieved context.',
+                role: 'system'
+              },
+              {
+                id: this.generatePromptId(),
+                content: 'Process the query and provide a helpful response.',
+                role: 'user'
+              }
+            ],
+            embeddingModelName: {
+              credentialId: '',
+              credential_name: '',
+              model_name: 'text-embedding-3-small',
+              provider_name: 'openai',
+              type: 'embedding'
+            },
+            generativeModelName: {
+              credentialId: '',
+              credential_name: '',
+              model_name: 'gpt-4',
+              provider_name: 'openai',
+              type: 'generator/text'
+            }
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'searchNode':
+        return {
+          ...baseNode,
+          values: {
+            searchQuery: '',
+            vectorDB: 'default',
+            limit: this.getNestedValue(n8nNode.parameters, 'topK') || 10,
+            certainty: '0.7',
+            filters: '{}',
+            embeddingModelName: {
+              credentialId: '',
+              credential_name: '',
+              model_name: 'text-embedding-3-small',
+              provider_name: 'openai',
+              type: 'embedding'
+            }
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'vectorNode':
+        return {
+          ...baseNode,
+          values: {
+            action: this.getNestedValue(n8nNode.parameters, 'action') || 'query',
+            vectorDB: this.getNestedValue(n8nNode.parameters, 'vectorDB') || 'default',
+            vectorsField: 'embedding',
+            metadataField: 'metadata',
+            primaryKeys: ['id'],
+            duplicateOperation: 'skip',
+            limit: 10,
+            filters: '{}'
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'vectorizeNode':
+        return {
+          ...baseNode,
+          values: {
+            inputText: '',
+            embeddingModelName: {
+              credentialId: '',
+              credential_name: '',
+              model_name: this.getNestedValue(n8nNode.parameters, 'model') || 'text-embedding-3-small',
+              provider_name: 'openai',
+              type: 'embedding'
+            },
+            generativeModelName: {
+              credentialId: '',
+              credential_name: '',
+              model_name: 'gpt-4',
+              provider_name: 'openai',
+              type: 'generator/text'
+            }
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'postgresNode':
+        // Handle Supabase nodes - convert to SQL queries
+        if (n8nNode.type === 'n8n-nodes-base.supabase') {
+          const operation = this.getNestedValue(n8nNode.parameters, 'operation') || 'query';
+          const tableId = this.getNestedValue(n8nNode.parameters, 'tableId') || '';
+          const filters = this.getNestedValue(n8nNode.parameters, 'filters');
+          const fieldsUi = this.getNestedValue(n8nNode.parameters, 'fieldsUi');
+          const matchType = this.getNestedValue(n8nNode.parameters, 'matchType');
+          const returnAll = this.getNestedValue(n8nNode.parameters, 'returnAll');
+          
+          // Build SQL query from Supabase parameters
+          let query = '';
+          if (operation === 'get' || operation === 'getAll') {
+            query = `SELECT * FROM ${tableId || 'table'}`;
+            if (filters?.conditions && Array.isArray(filters.conditions) && filters.conditions.length > 0) {
+              const conditions = filters.conditions.map((cond: any) => {
+                const key = cond.keyName || cond.key || '';
+                const value = cond.keyValue || cond.value || '';
+                const op = cond.condition || cond.operator || 'eq';
+                // Clean $json references from value - they should be handled in code, not SQL
+                const cleanValue = this.cleanJsonReferences(String(value));
+                const sqlOp = op === 'eq' ? '=' : op === 'ne' ? '!=' : op === 'gt' ? '>' : op === 'lt' ? '<' : '=';
+                return `${key} ${sqlOp} ${this.escapeSqlValue(cleanValue)}`;
+              }).join(' AND ');
+              query += ` WHERE ${conditions}`;
+            }
+            if (operation === 'getAll' && !returnAll) {
+              query += ' LIMIT 100';
+            }
+          } else if (operation === 'update') {
+            query = `UPDATE ${tableId || 'table'}`;
+            if (fieldsUi?.fieldValues && Array.isArray(fieldsUi.fieldValues) && fieldsUi.fieldValues.length > 0) {
+              const setClause = fieldsUi.fieldValues.map((fv: any) => {
+                const field = fv.fieldId || fv.field || '';
+                const value = fv.fieldValue || fv.value || '';
+                // Clean $json references
+                const cleanValue = this.cleanJsonReferences(String(value));
+                return `${field} = ${this.escapeSqlValue(cleanValue)}`;
+              }).join(', ');
+              query += ` SET ${setClause}`;
+            }
+            if (filters?.conditions && Array.isArray(filters.conditions) && filters.conditions.length > 0) {
+              const conditions = filters.conditions.map((cond: any) => {
+                const key = cond.keyName || cond.key || '';
+                const value = cond.keyValue || cond.value || '';
+                const cleanValue = this.cleanJsonReferences(String(value));
+                return `${key} = ${this.escapeSqlValue(cleanValue)}`;
+              }).join(' AND ');
+              query += ` WHERE ${conditions}`;
+            }
+          } else if (operation === 'insert') {
+            query = `INSERT INTO ${tableId || 'table'}`;
+            if (fieldsUi?.fieldValues && Array.isArray(fieldsUi.fieldValues) && fieldsUi.fieldValues.length > 0) {
+              const fields = fieldsUi.fieldValues.map((fv: any) => fv.fieldId || fv.field || '').join(', ');
+              const values = fieldsUi.fieldValues.map((fv: any) => {
+                const value = fv.fieldValue || fv.value || '';
+                const cleanValue = this.cleanJsonReferences(String(value));
+                return this.escapeSqlValue(cleanValue);
+              }).join(', ');
+              query += ` (${fields}) VALUES (${values})`;
+            }
+          }
+          
+          return {
+            ...baseNode,
+            values: {
+              credentials: '',
+              action: 'query',
+              query: query || 'SELECT 1',
+              tables: tableId || '',
+              schemas: '',
+              syncMode: '',
+              cronExpression: ''
+            },
+            'x-runtime': xRuntime,
+            '_flowMetadata': flowMetadata,
+          };
+        }
+        
+        // Standard PostgreSQL node (not Supabase)
+        return {
+          ...baseNode,
+          values: {
+            credentials: '',
+            action: this.getNestedValue(n8nNode.parameters, 'action') || 'query',
+            query: this.getNestedValue(n8nNode.parameters, 'query') || '',
+            tables: this.getNestedValue(n8nNode.parameters, 'tables') || '',
+            schemas: '',
+            syncMode: '',
+            cronExpression: ''
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
+      case 'googleDriveNode':
+        return {
+          ...baseNode,
+          values: {
+            credentials: '',
+            syncMode: 'full',
+            cronExpression: '',
+            folderUrl: this.getNestedValue(n8nNode.parameters, 'fileId') ? 
+                       `https://drive.google.com/file/d/${this.getNestedValue(n8nNode.parameters, 'fileId')}` : '',
+            globs: ['**/*'],
+            search_scope: 'all',
+            strategy: 'incremental',
+            start_date: '',
+            days_to_sync_if_history_is_full: '30'
+          },
+          'x-runtime': xRuntime,
+          '_flowMetadata': flowMetadata,
+        };
+
     }
 
     // Fallback to basic node
@@ -760,6 +2129,7 @@ export class NodeMapper {
    * Creates a placeholder node for unsupported node types
    */
   private createPlaceholderNode(n8nNode: N8nNode, nodeId: string): LamaticNode {
+    // Standard placeholder for unsupported nodes
     return {
       nodeId: nodeId,
       nodeType: 'placeholderNode',
@@ -776,17 +2146,36 @@ export class NodeMapper {
 
   /**
    * Gets a nested value from an object using dot notation
+   * Handles n8n __rl objects (resource list) by extracting .value property
    */
   private getNestedValue(obj: any, path: string): any {
-    return path.split('.').reduce((current, key) => {
+    const value = path.split('.').reduce((current, key) => {
       return current && current[key] !== undefined ? current[key] : undefined;
     }, obj);
+    
+    // Handle n8n __rl (resource list) objects - extract the value property
+    if (value && typeof value === 'object' && value.__rl === true && value.value !== undefined) {
+      return value.value;
+    }
+    
+    // Also handle objects with just a value property (common pattern)
+    if (value && typeof value === 'object' && 'value' in value && !('__rl' in value)) {
+      // Only extract if it's clearly an __rl-like object (has mode, cachedResultName, etc.)
+      // or if it's a simple object with just value
+      if (Object.keys(value).length <= 3 && 'value' in value) {
+        return value.value;
+      }
+    }
+    
+    return value;
   }
 
   /**
    * Generates a unique node ID matching the example format
+   * @param originalId - n8n node UUID
+   * @param n8nNodeType - Optional n8n node type to determine correct prefix
    */
-  generateNodeId(originalId: string): string {
+  generateNodeId(originalId: string, n8nNodeType?: string): string {
     // Create node IDs that match the example format using actual n8n workflow IDs
     const nodeIdMap: Record<string, string> = {
       '20d928f7-2fdd-42a4-b902-86995b88b241': 'triggerNode_1', // Webhook to receive message
@@ -800,17 +2189,46 @@ export class NodeMapper {
       return nodeIdMap[originalId];
     }
 
-    // Fallback for other nodes
+    // Determine correct node type prefix from mapping
+    const prefix = this.getNodeTypePrefix(n8nNodeType || '');
+    
+    // Generate unique ID: prefix_shortIdRandom
     const short = (originalId || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 3) || '000';
     const random = Math.floor(Math.random() * 1000);
-    return `${this.getNodeTypePrefix(originalId)}_${short}${random}`;
+    return `${prefix}_${short}${random}`;
   }
 
   /**
-   * Gets node type prefix for ID generation
+   * Gets node type prefix for ID generation based on n8n node type
    */
-  private getNodeTypePrefix(originalId: string): string {
-    // This would be determined by the node type, but for now use generic
+  private getNodeTypePrefix(n8nNodeType: string): string {
+    if (!n8nNodeType) return 'node';
+    
+    // Find the mapping for this n8n node type
+    const mapping = this.mappings.get(n8nNodeType);
+    if (mapping && mapping.lamaticType) {
+      // Return the Lamatic node type as prefix (e.g., 'slackNode', 'LLMNode', 'agentNode')
+      return mapping.lamaticType;
+    }
+    
+    // Fallback: try to infer from n8n type name
+    if (n8nNodeType.includes('webhook') || n8nNodeType.includes('trigger')) {
+      return 'webhookTriggerNode';
+    }
+    if (n8nNodeType.includes('slack')) {
+      return 'slackNode';
+    }
+    if (n8nNodeType.includes('gmail')) {
+      return 'gmailNode';
+    }
+    if (n8nNodeType.includes('agent')) {
+      return 'agentNode';
+    }
+    if (n8nNodeType.includes('gemini') || n8nNodeType.includes('llm') || n8nNodeType.includes('memory')) {
+      return 'LLMNode';
+    }
+    
+    // Default fallback
     return 'node';
   }
 

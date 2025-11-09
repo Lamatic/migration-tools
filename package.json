@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:workflows": "node scripts/test-workflows-main.js",
+    "test:conversion": "node scripts/test-conversion.js",
+    "analyze:migration": "node scripts/analyze-migration-readiness.js",
+    "verify:quality": "node scripts/verify-conversion-quality.js"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

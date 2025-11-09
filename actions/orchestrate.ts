@@ -63,15 +63,69 @@ export async function processMigration(file: File | string): Promise<MigrationRe
     // Step 3: Build dependencies
     migrationLog.push('Step 3: Building dependency structure...');
     
-    // Filter out placeholder nodes
-    const filteredResults = mappingResults.filter(result => 
-      result.lamaticNode.nodeType !== 'placeholderNode'
-    );
+    // IMPORTANT: Build connections with ALL nodes first (including placeholders)
+    // This ensures connections are preserved even if target/source is a placeholder
+    // We'll filter placeholders after building connections
+    const allLamaticNodes = mappingResults.map(r => r.lamaticNode);
     
     const dependencyResults = dependencyBuilder.buildDependencies(
       n8nWorkflow,
-      filteredResults.map(r => r.lamaticNode)
+      allLamaticNodes
     );
+    
+    // Now filter out placeholder nodes from the final result
+    const filteredNodesWithDependencies = dependencyResults.nodesWithDependencies.filter(
+      node => node.nodeType !== 'placeholderNode'
+    );
+    
+    // Filter connections to only include non-placeholder nodes
+    const filteredConnections: Record<string, any> = {};
+    const placeholderNodeIds = new Set(
+      allLamaticNodes
+        .filter(n => n.nodeType === 'placeholderNode')
+        .map(n => n.nodeId)
+    );
+    
+    for (const [nodeId, connection] of Object.entries(dependencyResults.connections)) {
+      if (placeholderNodeIds.has(nodeId)) continue; // Skip placeholder nodes
+      
+      // Filter out connections to placeholder nodes
+      const filteredConnection = { ...connection };
+      if (filteredConnection.connections) {
+        const cleanedConnections: Record<string, any[][]> = {};
+        for (const [portType, portConnections] of Object.entries(filteredConnection.connections)) {
+          if (Array.isArray(portConnections)) {
+            const cleanedPort: any[][] = [];
+            for (const portConnection of portConnections) {
+              if (Array.isArray(portConnection)) {
+                const cleanedPortConnection = portConnection.filter((conn: any) => 
+                  !placeholderNodeIds.has(conn.nodeId)
+                );
+                if (cleanedPortConnection.length > 0) {
+                  cleanedPort.push(cleanedPortConnection);
+                }
+              }
+            }
+            if (cleanedPort.length > 0) {
+              cleanedConnections[portType] = cleanedPort;
+            }
+          }
+        }
+        filteredConnection.connections = cleanedConnections;
+      }
+      
+      filteredConnections[nodeId] = filteredConnection;
+    }
+    
+    // Update dependencyResults with filtered data
+    dependencyResults.nodesWithDependencies = filteredNodesWithDependencies;
+    dependencyResults.connections = filteredConnections;
+    
+    // CRITICAL: Clean invalid nodeId references from values after filtering placeholders
+    // IMPORTANT: Include trigger node in valid IDs (it's separated later in generator)
+    const validNodeIds = new Set(filteredNodesWithDependencies.map(n => n.nodeId));
+    // Also ensure we don't validate against nodeIds that don't exist - verify each reference actually exists
+    cleanInvalidNodeReferences(filteredNodesWithDependencies, validNodeIds);
     
     migrationLog.push(`Built dependencies for ${dependencyResults.nodesWithDependencies.length} nodes`);
 
@@ -91,6 +145,18 @@ export async function processMigration(file: File | string): Promise<MigrationRe
       );
     } catch (error) {
       console.error('Generator error:', error);
+      // Log the nodes that were passed to help debug
+      console.error('Nodes passed to generator:', dependencyResults.nodesWithDependencies.map(n => ({
+        nodeId: n.nodeId,
+        nodeName: n.nodeName,
+        nodeType: n.nodeType,
+        needs: n.needs
+      })));
+      // If error is about missing trigger, check if we have any trigger nodes
+      if (error instanceof Error && error.message.includes('No trigger node')) {
+        const triggerNodes = dependencyResults.nodesWithDependencies.filter(n => n.nodeType === 'webhookTriggerNode');
+        console.error(`Trigger nodes found: ${triggerNodes.length}`, triggerNodes.map(t => ({ id: t.nodeId, name: t.nodeName, type: t.nodeType })));
+      }
       throw error;
     }
 
@@ -120,13 +186,30 @@ export async function processMigration(file: File | string): Promise<MigrationRe
   } catch (error) {
     const processingTime = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorStack = error instanceof Error ? error.stack : '';
     
+    console.error('Migration error:', errorMessage);
+    console.error('Error stack:', errorStack);
     migrationLog.push(`Migration failed: ${errorMessage}`);
+    if (errorStack) {
+      migrationLog.push(`Stack trace: ${errorStack.substring(0, 500)}`);
+    }
     errors.push(errorMessage);
+
+    // Try to preserve node count even on error
+    let totalNodes = 0;
+    try {
+      if (typeof file === 'string') {
+        const parsed = JSON.parse(file);
+        totalNodes = parsed.nodes?.length || 0;
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
 
     return {
       success: false,
-      totalNodes: 0,
+      totalNodes,
       convertedNodes: 0,
       warningNodes: 0,
       errorNodes: 0,
@@ -154,7 +237,7 @@ async function mapNodes(n8nWorkflow: N8nWorkflow): Promise<Array<{
 
   for (const n8nNode of n8nWorkflow.nodes) {
     try {
-      const nodeId = mapper.generateNodeId(n8nNode.id);
+      const nodeId = mapper.generateNodeId(n8nNode.id, n8nNode.type);
       const mappingResult = mapper.mapNode(n8nNode, nodeId);
       
       results.push({
@@ -247,16 +330,103 @@ function generateNodeMessage(mappingResult: any): string {
 }
 
 /**
+ * Cleans invalid nodeId references from node values
+ * Removes any $('nodeId') references that point to non-existent nodes
+ */
+function cleanInvalidNodeReferences(
+  nodes: any[],
+  validNodeIds: Set<string>
+): void {
+  for (const node of nodes) {
+    if (node.values) {
+      node.values = removeInvalidReferences(node.values, validNodeIds);
+    }
+  }
+}
+
+/**
+ * Recursively removes invalid $('nodeId') references from values
+ * Validates all nodeId references point to existing nodes
+ * This is a final cleanup pass after placeholder nodes are filtered
+ */
+function removeInvalidReferences(obj: any, validNodeIds: Set<string>): any {
+  if (obj == null) return obj;
+
+  if (typeof obj === 'string') {
+    let result = obj;
+    const matches: Array<{match: string; nodeId: string; start: number; end: number}> = [];
+    
+    // Find all $('nodeId') patterns with their positions
+    const regex = /\$\(['"]([^'"]+)['"]\)/g;
+    let match;
+    while ((match = regex.exec(obj)) !== null) {
+      matches.push({
+        match: match[0],
+        nodeId: match[1].trim(),
+        start: match.index,
+        end: match.index + match[0].length
+      });
+    }
+    
+    // Process matches in reverse order to preserve indices
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const { match: fullMatch, nodeId, start, end } = matches[i];
+      
+      if (validNodeIds.has(nodeId)) {
+        // Valid reference - keep it
+        continue;
+      }
+      
+      // Invalid reference - check if there's an expression after it
+      const afterText = result.substring(end);
+      const expressionMatch = afterText.match(/^(\.[\w.]+)/);
+      
+      if (expressionMatch) {
+        // Has expression like .item.json.field - replace with $json fallback
+        result = result.substring(0, start) + `$json${expressionMatch[1]}` + result.substring(end + expressionMatch[0].length);
+      } else {
+        // No expression - remove the invalid reference entirely
+        result = result.substring(0, start) + result.substring(end);
+      }
+    }
+    
+    // Clean up extra whitespace but preserve structure
+    return result.replace(/\s{2,}/g, ' ').trim();
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(v => removeInvalidReferences(v, validNodeIds)).filter(v => v !== '');
+  }
+  
+  if (typeof obj === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      const cleanedValue = removeInvalidReferences(v, validNodeIds);
+      // Only include non-empty cleaned values (unless it's a number/boolean/null/array with items)
+      if (cleanedValue !== '' || typeof cleanedValue === 'number' || typeof cleanedValue === 'boolean' || cleanedValue === null || (Array.isArray(cleanedValue) && cleanedValue.length > 0)) {
+        cleaned[k] = cleanedValue;
+      }
+    }
+    return cleaned;
+  }
+  
+  return obj;
+}
+
+/**
  * Creates an error node for failed mappings
+ * Uses placeholderNode type since ErrorNode is not a valid Lamatic node type
  */
 function createErrorNode(n8nNode: any, errorMessage: string): any {
   return {
-    nodeId: mapper.generateNodeId(n8nNode.id),
+    nodeId: mapper.generateNodeId(n8nNode.id, n8nNode.type),
     nodeName: `${n8nNode.name} (Error)`,
-    nodeType: 'ErrorNode',
+    nodeType: 'placeholderNode', // Use placeholderNode instead of ErrorNode (not a valid Lamatic type)
     values: {
+      originalType: n8nNode.type,
+      originalParameters: n8nNode.parameters,
       error: errorMessage,
-      originalNode: n8nNode,
+      note: 'This node failed to map and requires manual setup',
     },
     modes: {},
     needs: [],

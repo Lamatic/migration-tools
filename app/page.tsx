@@ -22,7 +22,7 @@ const generateMarkdownReport = (result: any): string => {
   markdown += `- **Total Nodes:** ${result.totalNodes}\n`;
   markdown += `- **Successfully Migrated:** ${result.convertedNodes}\n`;
   markdown += `- **Warnings:** ${result.warningNodes || 0}\n`;
-  markdown += `- **Success Rate:** ${Math.round((result.convertedNodes / result.totalNodes) * 100)}%\n\n`;
+  markdown += `- **Success Rate:** ${result.totalNodes > 0 ? Math.round((result.convertedNodes / result.totalNodes) * 100) : 0}%\n\n`;
   markdown += `---\n\n`;
   
   // What's Next
@@ -147,7 +147,7 @@ const generatePDF = async (result: any, reportElement?: HTMLElement | null) => {
     let yPos = margin;
 
     const timestamp = new Date().toLocaleString();
-    const successRate = Math.round((result.convertedNodes / result.totalNodes) * 100);
+    const successRate = result.totalNodes > 0 ? Math.round((result.convertedNodes / result.totalNodes) * 100) : 0;
 
     // Color palette - minimal, professional
     const colors = {
@@ -781,7 +781,21 @@ export default function MigrationTool() {
         body: formData,
       });
 
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || errorData.details || 'Migration failed');
+      }
+
       const data = await res.json();
+      
+      // Debug: Log the result
+      console.log('Migration result:', {
+        success: data.success,
+        totalNodes: data.totalNodes,
+        convertedNodes: data.convertedNodes,
+        errors: data.errors,
+        warnings: data.warnings
+      });
       setProgress(100);
       
       await new Promise(r => setTimeout(r, 300));
@@ -911,7 +925,7 @@ export default function MigrationTool() {
               )}
               <div className="stat-card p-5 rounded-xl border-2 border-border bg-card/50 backdrop-blur-sm hover:border-primary/30 transition-all" style={{ animationDelay: '0.4s' }}>
                 <div className="text-3xl font-semibold mb-1.5">
-                  {Math.round((result.convertedNodes / result.totalNodes) * 100)}%
+                  {result.totalNodes > 0 ? Math.round((result.convertedNodes / result.totalNodes) * 100) : 0}%
                 </div>
                 <div className="label text-muted-foreground">Migration Success</div>
               </div>
@@ -1484,7 +1498,7 @@ export default function MigrationTool() {
                     <div className="bg-muted/30 p-3 rounded-lg border-2 border-green-500/30">
                       <div className="text-xs text-muted-foreground mb-1">Success Rate</div>
                       <div className="font-bold text-xl text-green-600 dark:text-green-400">
-                        {Math.round((result.convertedNodes / result.totalNodes) * 100)}%
+                        {result.totalNodes > 0 ? Math.round((result.convertedNodes / result.totalNodes) * 100) : 0}%
                       </div>
                     </div>
                   </div>
