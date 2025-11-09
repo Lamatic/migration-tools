@@ -6,23 +6,37 @@ import { ThemeToggle } from '@/components/theme-toggle';
 
 // PDF generation helper - Minimalist, clean design
 // Generate Markdown report for Notion users
-const generateMarkdownReport = (result: any): string => {
+const generateMarkdownReport = (result: any, originalFileName?: string): string => {
   const workflowName = result.lamaticWorkflow?.name || 'Workflow';
   const date = new Date().toLocaleDateString();
   const time = new Date().toLocaleTimeString();
+  const successRate = result.totalNodes > 0 ? Math.round((result.convertedNodes / result.totalNodes) * 100) : 0;
   
   let markdown = `# 📊 n8n to Lamatic Migration Report\n\n`;
   markdown += `**Workflow:** ${workflowName}\n`;
   markdown += `**Migration Date:** ${date} at ${time}\n`;
-  markdown += `**Processing Time:** ${Math.round((result.processingTime || 0) / 1000)}s\n\n`;
+  markdown += `**Processing Time:** ${Math.round((result.processingTime || 0) / 1000)} seconds\n\n`;
   markdown += `---\n\n`;
   
-  // Quick Summary
-  markdown += `## ✅ Quick Summary\n\n`;
-  markdown += `- **Total Nodes:** ${result.totalNodes}\n`;
-  markdown += `- **Successfully Migrated:** ${result.convertedNodes}\n`;
-  markdown += `- **Warnings:** ${result.warningNodes || 0}\n`;
-  markdown += `- **Success Rate:** ${result.totalNodes > 0 ? Math.round((result.convertedNodes / result.totalNodes) * 100) : 0}%\n\n`;
+  // Migration Summary
+  markdown += `## 📋 Migration Summary\n\n`;
+  markdown += `| Field | Value |\n`;
+  markdown += `|-------|-------|\n`;
+  markdown += `| **Workflow Name** | ${workflowName} |\n`;
+  markdown += `| **Processing Time** | ${Math.round((result.processingTime || 0) / 1000)} seconds |\n`;
+  markdown += `| **Completed** | ${new Date().toLocaleString()} |\n`;
+  markdown += `| **Success Rate** | ${successRate}% |\n\n`;
+  markdown += `> All ${result.totalNodes} automation nodes from your n8n workflow have been converted to Lamatic format. Your workflow logic, connections, and automation flows are ready to use in Lamatic.\n\n`;
+  markdown += `---\n\n`;
+  
+  // Migration Statistics
+  markdown += `## 📊 Migration Statistics\n\n`;
+  markdown += `| Metric | Count |\n`;
+  markdown += `|--------|-------|\n`;
+  markdown += `| **Total Nodes** | ${result.totalNodes} |\n`;
+  markdown += `| **✅ Converted** | ${result.convertedNodes} |\n`;
+  markdown += `| **⚠️ Need Setup** | ${result.warningNodes || 0} |\n`;
+  markdown += `| **❌ Errors** | ${result.errorNodes || 0} |\n\n`;
   markdown += `---\n\n`;
   
   // What's Next
@@ -98,15 +112,76 @@ const generateMarkdownReport = (result: any): string => {
   markdown += `⏱️ **Total estimated time:** ${result.warningNodes > 0 ? '10-15' : '5-8'} minutes\n\n`;
   markdown += `---\n\n`;
   
-  // Node Details
+  // Credentials Required Section
+  const credentialNodes = result.nodeResults?.filter((n: any) => 
+    n.n8nNodeType?.includes('slack') || 
+    n.n8nNodeType?.includes('gemini') ||
+    n.n8nNodeType?.includes('google') ||
+    n.message?.toLowerCase().includes('credential') ||
+    n.message?.toLowerCase().includes('auth')
+  );
+  
+  if (credentialNodes && credentialNodes.length > 0) {
+    markdown += `## 🔐 Credentials Required\n\n`;
+    markdown += `> ⚠️ **Important:** The following services need authentication setup in Lamatic. Your workflow won't run until these credentials are configured.\n\n`;
+    
+    credentialNodes.forEach((node: any, i: number) => {
+      const isSlack = node.n8nNodeType?.includes('slack');
+      const isGemini = node.n8nNodeType?.includes('gemini') || node.n8nNodeType?.includes('google');
+      
+      markdown += `### ${i + 1}. ${node.n8nNodeName}\n\n`;
+      markdown += `**Service Type:** ${isSlack ? 'Slack messaging integration' : isGemini ? 'Google Gemini AI model' : 'External service integration'}\n\n`;
+      
+      if (isSlack) {
+        markdown += `#### ⚠️ Action Required - Without this, Slack messages won't send\n\n`;
+        markdown += `**Step-by-Step Setup:**\n\n`;
+        markdown += `1. **Get Your Slack Token**\n`;
+        markdown += `   - Visit [api.slack.com/apps](https://api.slack.com/apps)\n`;
+        markdown += `   - Create or select your app → "OAuth & Permissions"\n`;
+        markdown += `   - Copy **"Bot User OAuth Token"**\n\n`;
+        markdown += `2. **Open Your Imported Workflow**\n`;
+        markdown += `   - In Lamatic Studio, open the workflow you just imported\n`;
+        markdown += `   - Find the **"${node.n8nNodeName}"** node\n\n`;
+        markdown += `3. **Configure Credentials**\n`;
+        markdown += `   - Click the node → Click **"Configure Credentials"**\n`;
+        markdown += `   - Paste your Bot Token → Click **"Test Connection"** → Save\n\n`;
+        markdown += `**Required Slack Permissions:**\n`;
+        markdown += `- \`chat:write\`\n`;
+        markdown += `- \`channels:read\`\n`;
+        markdown += `- \`users:read\`\n\n`;
+        markdown += `⏱️ **Time needed:** 3-5 minutes\n\n`;
+      }
+      
+      if (isGemini) {
+        markdown += `#### ⚠️ Action Required - AI features won't work without API key\n\n`;
+        markdown += `**Step-by-Step Setup:**\n\n`;
+        markdown += `1. **Get Your Gemini API Key**\n`;
+        markdown += `   - Visit [makersuite.google.com/app/apikey](https://makersuite.google.com/app/apikey)\n`;
+        markdown += `   - Click **"Create API Key"**\n`;
+        markdown += `   - Select/create a Google Cloud project → Copy the key\n\n`;
+        markdown += `2. **Open Your Imported Workflow**\n`;
+        markdown += `   - In Lamatic Studio, open the workflow you just imported\n`;
+        markdown += `   - Find the **"${node.n8nNodeName}"** node\n\n`;
+        markdown += `3. **Add API Key to Lamatic**\n`;
+        markdown += `   - Click the node → Click **"Configure Credentials"**\n`;
+        markdown += `   - Paste your API Key → Click **"Test API Key"** → Save\n\n`;
+        markdown += `> 🔐 **Security Warning:** Never share your API key publicly or commit it to version control. Treat it like a password.\n\n`;
+        markdown += `⏱️ **Time needed:** 2-3 minutes\n\n`;
+      }
+      
+      markdown += `---\n\n`;
+    });
+  }
+  
+  // Node Conversion Details
   markdown += `## 📋 Node Conversion Details\n\n`;
   result.nodeResults?.forEach((node: any, i: number) => {
     const statusEmoji = node.status === 'success' ? '✅' : node.status === 'warning' ? '⚠️' : '❌';
-    markdown += `${i + 1}. ${statusEmoji} **${node.n8nNodeName}**\n`;
-    markdown += `   - Type: \`${node.n8nNodeType}\` → \`${node.lamaticNodeType}\`\n`;
-    markdown += `   - Status: ${node.status}\n`;
+    markdown += `### ${i + 1}. ${statusEmoji} ${node.n8nNodeName}\n\n`;
+    markdown += `- **Status:** ${node.status}\n`;
+    markdown += `- **Type Conversion:** \`${node.n8nNodeType}\` → \`${node.lamaticNodeType}\`\n`;
     if (node.message) {
-      markdown += `   - Note: ${node.message}\n`;
+      markdown += `- **Note:** ${node.message}\n`;
     }
     markdown += `\n`;
   });
@@ -130,7 +205,7 @@ const generateMarkdownReport = (result: any): string => {
   return markdown;
 };
 
-const generatePDF = async (result: any, reportElement?: HTMLElement | null) => {
+const generatePDF = async (result: any, originalFileName?: string, reportElement?: HTMLElement | null) => {
   try {
     const { jsPDF } = await import('jspdf');
     
@@ -194,24 +269,89 @@ const generatePDF = async (result: any, reportElement?: HTMLElement | null) => {
     drawLine();
 
     // ==========================================
-    // OVERVIEW - Single line, clean
+    // MIGRATION SUMMARY - Enhanced with all details
     // ==========================================
-    checkPageBreak(15);
+    checkPageBreak(25);
     pdf.setFontSize(11);
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-    pdf.text('Workflow Overview', margin, yPos);
+    pdf.text('Migration Summary', margin, yPos);
     yPos += 7;
 
-    pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(`Name: ${result.lamaticWorkflow?.name || 'Unnamed Workflow'}`, margin, yPos);
-    yPos += 5;
-
+    // Summary grid - 2 columns
     pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+    
+    // Row 1: Workflow Name & Processing Time
+    pdf.text('Workflow Name:', margin, yPos);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(result.lamaticWorkflow?.name || 'Unnamed Workflow', margin + 35, yPos);
+    pdf.setFont('helvetica', 'normal');
+    
+    pdf.text('Processing Time:', margin + 100, yPos);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`${Math.round((result.processingTime || 0) / 1000)} seconds`, margin + 135, yPos);
+    pdf.setFont('helvetica', 'normal');
+    yPos += 6;
+
+    // Row 2: Completed Date & Success Rate
+    pdf.text('Completed:', margin, yPos);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(new Date().toLocaleString(), margin + 35, yPos);
+    pdf.setFont('helvetica', 'normal');
+    
+    pdf.text('Success Rate:', margin + 100, yPos);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(colors.success[0], colors.success[1], colors.success[2]);
+    pdf.text(`${successRate}%`, margin + 135, yPos);
+    pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+    pdf.setFont('helvetica', 'normal');
+    yPos += 8;
+
+    // What this means section
+    pdf.setFontSize(8);
     pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
-    pdf.text(`Successfully converted ${result.convertedNodes} of ${result.totalNodes} nodes (${successRate}% complete)`, margin, yPos);
-    yPos += 12;
+    pdf.text(`All ${result.totalNodes} automation nodes from your n8n workflow have been converted to Lamatic format.`, margin, yPos);
+    yPos += 4;
+    pdf.text('Your workflow logic, connections, and automation flows are ready to use in Lamatic.', margin, yPos);
+    yPos += 10;
+
+    drawLine();
+
+    // ==========================================
+    // MIGRATION STATISTICS - 4-column grid
+    // ==========================================
+    checkPageBreak(20);
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+    pdf.text('Migration Statistics', margin, yPos);
+    yPos += 8;
+
+    // Statistics grid
+    const stats = [
+      { label: 'Total Nodes', value: result.totalNodes, color: colors.text },
+      { label: 'Converted', value: result.convertedNodes, color: colors.success },
+      { label: 'Need Setup', value: result.warningNodes || 0, color: colors.text },
+      { label: 'Errors', value: result.errorNodes || 0, color: colors.text }
+    ];
+
+    const statWidth = contentWidth / 4;
+    stats.forEach((stat, i) => {
+      const xPos = margin + (i * statWidth);
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(stat.color[0], stat.color[1], stat.color[2]);
+      pdf.text(String(stat.value), xPos, yPos);
+      yPos += 5;
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+      pdf.text(stat.label, xPos, yPos);
+      yPos -= 5;
+    });
+    yPos += 10;
 
     drawLine();
 
@@ -241,11 +381,11 @@ const generatePDF = async (result: any, reportElement?: HTMLElement | null) => {
       yPos += 8;
 
       credentialNodes.forEach((node: any, index: number) => {
-        checkPageBreak(20);
+        checkPageBreak(35);
         const isSlack = node.n8nNodeType?.includes('slack');
         const isGemini = node.n8nNodeType?.includes('gemini') || node.n8nNodeType?.includes('google');
         
-        // Node name
+        // Node name with icon
         pdf.setFontSize(10);
         pdf.setFont('helvetica', 'bold');
         pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
@@ -258,17 +398,128 @@ const generatePDF = async (result: any, reportElement?: HTMLElement | null) => {
         pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
         
         if (isSlack) {
-          pdf.text('Service: Slack', margin + 6, yPos);
+          pdf.text('Service: Slack messaging integration', margin + 6, yPos);
+          yPos += 6;
+          
+          // Warning box
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(234, 179, 8); // yellow
+          pdf.text('⚠️ Action Required - Without this, Slack messages won\'t send', margin + 6, yPos);
+          yPos += 5;
+          
+          // Step-by-step setup
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+          pdf.text('Step-by-Step Setup:', margin + 6, yPos);
+          yPos += 5;
+          
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8);
+          pdf.text('1. Get Your Slack Token', margin + 10, yPos);
           yPos += 4;
-          pdf.text('Setup: api.slack.com/apps > OAuth & Permissions > Copy Bot Token', margin + 6, yPos);
+          pdf.setFontSize(7);
+          pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+          pdf.text('Visit api.slack.com/apps → Create or select your app → "OAuth & Permissions"', margin + 12, yPos);
+          yPos += 3.5;
+          pdf.text('Copy "Bot User OAuth Token"', margin + 12, yPos);
+          yPos += 5;
+          
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+          pdf.text('2. Open Your Imported Workflow', margin + 10, yPos);
           yPos += 4;
-          pdf.text('Add to: Lamatic Slack node credentials', margin + 6, yPos);
+          pdf.setFontSize(7);
+          pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+          pdf.text(`In Lamatic Studio, open the workflow → Find the "${node.n8nNodeName}" node`, margin + 12, yPos);
+          yPos += 5;
+          
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+          pdf.text('3. Configure Credentials', margin + 10, yPos);
+          yPos += 4;
+          pdf.setFontSize(7);
+          pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+          pdf.text('Click the node → "Configure Credentials" → Paste Bot Token → "Test Connection" → Save', margin + 12, yPos);
+          yPos += 5;
+          
+          // Required permissions
+          pdf.setFontSize(7);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+          pdf.text('Required Slack Permissions:', margin + 10, yPos);
+          yPos += 4;
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(7);
+          pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+          pdf.text('chat:write, channels:read, users:read', margin + 12, yPos);
+          yPos += 4;
+          pdf.text('Time needed: 3-5 minutes', margin + 12, yPos);
+          
         } else if (isGemini) {
-          pdf.text('Service: Google Gemini', margin + 6, yPos);
+          pdf.text('Service: Google Gemini AI model', margin + 6, yPos);
+          yPos += 6;
+          
+          // Warning box
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(234, 179, 8); // yellow
+          pdf.text('⚠️ Action Required - AI features won\'t work without API key', margin + 6, yPos);
+          yPos += 5;
+          
+          // Step-by-step setup
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+          pdf.text('Step-by-Step Setup:', margin + 6, yPos);
+          yPos += 5;
+          
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8);
+          pdf.text('1. Get Your Gemini API Key', margin + 10, yPos);
           yPos += 4;
-          pdf.text('Setup: makersuite.google.com/app/apikey > Create API Key', margin + 6, yPos);
+          pdf.setFontSize(7);
+          pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+          pdf.text('Visit makersuite.google.com/app/apikey → Click "Create API Key"', margin + 12, yPos);
+          yPos += 3.5;
+          pdf.text('Select/create a Google Cloud project → Copy the key', margin + 12, yPos);
+          yPos += 5;
+          
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+          pdf.text('2. Open Your Imported Workflow', margin + 10, yPos);
           yPos += 4;
-          pdf.text('Add to: Lamatic Google Gemini node credentials', margin + 6, yPos);
+          pdf.setFontSize(7);
+          pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+          pdf.text(`In Lamatic Studio, open the workflow → Find the "${node.n8nNodeName}" node`, margin + 12, yPos);
+          yPos += 5;
+          
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+          pdf.text('3. Add API Key to Lamatic', margin + 10, yPos);
+          yPos += 4;
+          pdf.setFontSize(7);
+          pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+          pdf.text('Click the node → "Configure Credentials" → Paste API Key → "Test API Key" → Save', margin + 12, yPos);
+          yPos += 5;
+          
+          // Security warning
+          pdf.setFontSize(7);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(239, 68, 68); // red
+          pdf.text('🔐 Security Warning:', margin + 10, yPos);
+          yPos += 4;
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(7);
+          pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+          pdf.text('Never share your API key publicly or commit it to version control.', margin + 12, yPos);
+          yPos += 3.5;
+          pdf.text('Time needed: 2-3 minutes', margin + 12, yPos);
         } else {
           pdf.text('Service: External Integration', margin + 6, yPos);
           yPos += 4;
@@ -283,13 +534,13 @@ const generatePDF = async (result: any, reportElement?: HTMLElement | null) => {
     }
 
     // ==========================================
-    // NODE CONVERSION DETAILS - Simple table
+    // NODE CONVERSION DETAILS - Enhanced with status
     // ==========================================
     checkPageBreak(20);
     pdf.setFontSize(11);
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-    pdf.text('Converted Nodes', margin, yPos);
+    pdf.text('Node Conversion Details', margin, yPos);
     yPos += 7;
 
     pdf.setFontSize(9);
@@ -299,23 +550,48 @@ const generatePDF = async (result: any, reportElement?: HTMLElement | null) => {
     yPos += 8;
 
     result.nodeResults?.forEach((node: any, i: number) => {
-      checkPageBreak(8);
+      checkPageBreak(12);
       
-      const isSuccess = node.status === 'success';
+      // Status indicator
+      const statusSymbol = node.status === 'success' ? '✓' : node.status === 'warning' ? '!' : '✗';
+      const statusColor = node.status === 'success' 
+        ? colors.success 
+        : node.status === 'warning' 
+        ? [234, 179, 8] // yellow
+        : [239, 68, 68]; // red
       
-      // Simple list with dash
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
+      pdf.text(statusSymbol, margin + 3, yPos);
+      
+      // Node name
       pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-      pdf.text('-', margin + 3, yPos);
-      pdf.text(node.n8nNodeName, margin + 7, yPos);
+      pdf.text(node.n8nNodeName, margin + 10, yPos);
       
-      // Show conversion
+      // Status badge
+      pdf.setFontSize(7);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
+      pdf.text(`[${node.status}]`, margin + 10, yPos + 3.5);
+      
+      // Node type conversion
+      yPos += 5;
       pdf.setFontSize(8);
       pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
-      pdf.text(`(${node.lamaticNodeType})`, margin + 7, yPos + 3.5);
+      pdf.text(`${node.n8nNodeType} → ${node.lamaticNodeType}`, margin + 10, yPos);
       
-      yPos += 7;
+      // Message if present
+      if (node.message) {
+        yPos += 4;
+        pdf.setFontSize(7);
+        pdf.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+        const messageLines = pdf.splitTextToSize(node.message, contentWidth - 15);
+        pdf.text(messageLines, margin + 10, yPos);
+        yPos += (messageLines.length * 3);
+      }
+      
+      yPos += 5;
     });
     
     yPos += 4;
@@ -488,8 +764,9 @@ const generatePDF = async (result: any, reportElement?: HTMLElement | null) => {
       pdf.text('lamatic.ai', pageWidth - margin, pageHeight - 10, { align: 'right' });
     }
 
-    // Download
-    const filename = `n8n-lamatic-report-${result.lamaticWorkflow?.name?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'workflow'}.pdf`;
+    // Download - use original filename if available
+    const reportBaseName = originalFileName || result.lamaticWorkflow?.name?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'workflow';
+    const filename = `${reportBaseName}_migration-report.pdf`;
     pdf.save(filename);
   } catch (error) {
     console.error('PDF generation failed:', error);
@@ -740,6 +1017,7 @@ export default function MigrationTool() {
   const [processingStage, setProcessingStage] = useState<'parsing' | 'mapping' | 'building' | 'generating' | 'finalizing'>('parsing');
   const [cardsVisible, setCardsVisible] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [originalFileName, setOriginalFileName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Trigger card appearance animation
@@ -753,6 +1031,10 @@ export default function MigrationTool() {
 
   const handleFile = async (file: File) => {
     if (!file || !file.name.endsWith('.json')) return;
+
+    // Store original filename for download naming
+    const baseName = file.name.replace(/\.json$/i, '');
+    setOriginalFileName(baseName);
 
     setView('processing');
     setProgress(0);
@@ -820,7 +1102,11 @@ export default function MigrationTool() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${result.lamaticWorkflow.name.replace(/\s+/g, '_')}.json`;
+    // Use original filename with _lamatic suffix, or fallback to workflow name
+    const downloadName = originalFileName 
+      ? `${originalFileName}_lamatic.json`
+      : `${result.lamaticWorkflow.name.replace(/\s+/g, '_')}_lamatic.json`;
+    a.download = downloadName;
     a.click();
     URL.revokeObjectURL(url);
     
@@ -833,6 +1119,7 @@ export default function MigrationTool() {
     setView('choose');
     setResult(null);
     setProgress(0);
+    setOriginalFileName('');
   };
 
   return (
@@ -1923,37 +2210,28 @@ export default function MigrationTool() {
                 </div>
               </div>
 
-              {/* Modal Footer - PDF Export Only */}
+              {/* Modal Footer - Download Markdown Only */}
               <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-card/50 sticky bottom-0">
                 <div className="text-sm text-muted-foreground">
                   Report generated: {new Date().toLocaleString()}
                 </div>
                 <div className="flex gap-3">
                   <button
-                    onClick={() => generatePDF(result)}
+                    onClick={() => {
+                      const markdown = generateMarkdownReport(result, originalFileName);
+                      const blob = new Blob([markdown], { type: 'text/markdown' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      const reportBaseName = originalFileName || result.lamaticWorkflow?.name?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'workflow';
+                      a.download = `${reportBaseName}_migration-report.md`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
                     className="h-11 px-6 bg-primary text-white rounded-xl font-semibold inline-flex items-center gap-2 text-sm hover:shadow-xl hover:shadow-primary/25 hover:scale-105 transition-all"
                   >
                     <FileDown className="w-4 h-4" />
-                    Download PDF
-                  </button>
-                  <button
-                    onClick={() => {
-                      const markdown = generateMarkdownReport(result);
-                      navigator.clipboard.writeText(markdown);
-                      alert('✅ Report copied as Markdown! Paste it in Notion.');
-                    }}
-                    className="h-11 px-6 border-2 border-primary/30 bg-card text-foreground rounded-xl font-semibold inline-flex items-center gap-2 text-sm hover:bg-primary/5 hover:border-primary/60 transition-all"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Copy as Markdown
-                  </button>
-                  <button
-                    onClick={() => setShowReport(false)}
-                    className="h-11 px-5 border-2 border-border rounded-xl font-semibold text-sm hover:bg-muted transition-all"
-                  >
-                    Close
+                    Download Markdown
                   </button>
                 </div>
               </div>
