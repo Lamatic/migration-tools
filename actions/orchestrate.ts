@@ -348,21 +348,31 @@ function cleanInvalidNodeReferences(
  * Recursively removes invalid $('nodeId') references from values
  * Validates all nodeId references point to existing nodes
  * This is a final cleanup pass after placeholder nodes are filtered
+ * CRITICAL: Never treats $json as a node ID - it's a data reference
  */
 function removeInvalidReferences(obj: any, validNodeIds: Set<string>): any {
   if (obj == null) return obj;
 
   if (typeof obj === 'string') {
     let result = obj;
+    
+    // CRITICAL: First, remove any invalid $('$json') patterns - $json is NOT a node
+    result = result.replace(/\$\(['"]\$json['"]\)/g, '$json');
+    
     const matches: Array<{match: string; nodeId: string; start: number; end: number}> = [];
     
     // Find all $('nodeId') patterns with their positions
     const regex = /\$\(['"]([^'"]+)['"]\)/g;
     let match;
-    while ((match = regex.exec(obj)) !== null) {
+    while ((match = regex.exec(result)) !== null) {
+      const nodeId = match[1].trim();
+      // CRITICAL: Skip $json - it's not a node reference
+      if (nodeId === '$json' || nodeId.startsWith('$json')) {
+        continue; // Skip this match
+      }
       matches.push({
         match: match[0],
-        nodeId: match[1].trim(),
+        nodeId: nodeId,
         start: match.index,
         end: match.index + match[0].length
       });
@@ -371,6 +381,13 @@ function removeInvalidReferences(obj: any, validNodeIds: Set<string>): any {
     // Process matches in reverse order to preserve indices
     for (let i = matches.length - 1; i >= 0; i--) {
       const { match: fullMatch, nodeId, start, end } = matches[i];
+      
+      // Double-check: never treat $json as a node
+      if (nodeId === '$json' || nodeId.startsWith('$json')) {
+        // Replace with plain $json
+        result = result.substring(0, start) + '$json' + result.substring(end);
+        continue;
+      }
       
       if (validNodeIds.has(nodeId)) {
         // Valid reference - keep it

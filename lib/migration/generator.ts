@@ -126,21 +126,31 @@ export class LamaticOutputGenerator {
   
   /**
    * Final cleanup of invalid nodeId references (safety net)
+   * CRITICAL: Never treats $json as a node ID - it's a data reference
    */
   private cleanInvalidReferences(obj: any, validNodeIds: Set<string>): any {
     if (obj == null) return obj;
 
     if (typeof obj === 'string') {
       let result = obj;
+      
+      // CRITICAL: First, remove any invalid $('$json') patterns - $json is NOT a node
+      result = result.replace(/\$\(['"]\$json['"]\)/g, '$json');
+      
       const matches: Array<{match: string; nodeId: string; start: number; end: number}> = [];
       
       // Find all $('nodeId') patterns
       const regex = /\$\(['"]([^'"]+)['"]\)/g;
       let match;
-      while ((match = regex.exec(obj)) !== null) {
+      while ((match = regex.exec(result)) !== null) {
+        const nodeId = match[1].trim();
+        // CRITICAL: Skip $json - it's not a node reference
+        if (nodeId === '$json' || nodeId.startsWith('$json')) {
+          continue; // Skip this match
+        }
         matches.push({
           match: match[0],
-          nodeId: match[1].trim(),
+          nodeId: nodeId,
           start: match.index,
           end: match.index + match[0].length
         });
@@ -149,6 +159,13 @@ export class LamaticOutputGenerator {
       // Process in reverse order
       for (let i = matches.length - 1; i >= 0; i--) {
         const { nodeId, start, end } = matches[i];
+        
+        // Double-check: never treat $json as a node
+        if (nodeId === '$json' || nodeId.startsWith('$json')) {
+          // Replace with plain $json
+          result = result.substring(0, start) + '$json' + result.substring(end);
+          continue;
+        }
         
         if (!validNodeIds.has(nodeId)) {
           // Invalid reference - remove or replace

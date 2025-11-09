@@ -420,6 +420,8 @@ export class DependencyBuilder {
    * - $('Node Name').item.json.field
    * - $('Node Name').first().json.field
    * - $node["Node Name"].json.field
+   * 
+   * CRITICAL: Never treats $json as a node name - it's a data reference, not a node reference
    */
   private rewriteNameReferences(
     obj: any,
@@ -435,10 +437,19 @@ export class DependencyBuilder {
     if (typeof obj === 'string') {
       let result = obj;
       
+      // CRITICAL: First, remove any invalid $('$json') patterns - $json is NOT a node
+      result = result.replace(/\$\(['"]\$json['"]\)/g, '$json');
+      
       // Pattern 1: $('Node Name') - capture the full expression with any suffix
       // Match: $('Node Name') followed by optional .item.json.field, .first().json.field, etc.
+      // SKIP if the name is '$json' - it's not a node reference
       result = result.replace(/\$\(['"]([^'"]+)['"]\)/g, (match, name: string) => {
         const trimmedName = name.trim();
+        
+        // CRITICAL: Never treat $json as a node name
+        if (trimmedName === '$json' || trimmedName.startsWith('$json')) {
+          return '$json'; // Return plain $json, not a node reference
+        }
         
         // Resolve to nodeId
         const resolvedId = this.resolveNodeNameToId(trimmedName, nameToIds, n8nIdToLamaticId, validNodeIds, n8nWorkflow, warnings, currentLamaticNode);
@@ -446,17 +457,31 @@ export class DependencyBuilder {
         if (resolvedId) {
           return `$('${resolvedId}')`;
         }
+        // If can't resolve and it looks like a data reference (starts with $), keep as $json
+        if (trimmedName.startsWith('$')) {
+          return '$json';
+        }
         return match; // Keep original if can't resolve
       });
       
       // Pattern 2: $node["Node Name"] or $node['Node Name'] - convert to $('nodeId')
+      // SKIP if the name is '$json'
       result = result.replace(/\$node\[['"]([^'"]+)['"]\]/g, (match, name: string) => {
         const trimmedName = name.trim();
+        
+        // CRITICAL: Never treat $json as a node name
+        if (trimmedName === '$json' || trimmedName.startsWith('$json')) {
+          return '$json';
+        }
         
         const resolvedId = this.resolveNodeNameToId(trimmedName, nameToIds, n8nIdToLamaticId, validNodeIds, n8nWorkflow, warnings, currentLamaticNode);
         
         if (resolvedId) {
           return `$('${resolvedId}')`;
+        }
+        // If can't resolve and it looks like a data reference, return $json
+        if (trimmedName.startsWith('$')) {
+          return '$json';
         }
         return match;
       });
@@ -482,6 +507,7 @@ export class DependencyBuilder {
   /**
    * Resolves a node name to a valid Lamatic node ID
    * Returns the nodeId if found and unique, null otherwise
+   * CRITICAL: Never resolves $json - it's a data reference, not a node name
    */
   private resolveNodeNameToId(
     nodeName: string,
@@ -492,6 +518,11 @@ export class DependencyBuilder {
     warnings: string[],
     currentLamaticNode?: LamaticNode
   ): string | null {
+    // CRITICAL: Never treat $json as a node name
+    if (nodeName === '$json' || nodeName.startsWith('$json') || nodeName.startsWith('$')) {
+      return null; // $json is a data reference, not a node
+    }
+    
     // 1) Exact single candidate by name
     const candidates = nameToIds.get(nodeName) || [];
     if (candidates.length === 1) {
@@ -529,6 +560,7 @@ export class DependencyBuilder {
   /**
    * Validates all $('nodeId') references point to existing nodes
    * Removes or fixes invalid references
+   * CRITICAL: Never treats $json as a node ID - it's a data reference
    */
   private validateNodeReferences(
     obj: any,
@@ -538,15 +570,24 @@ export class DependencyBuilder {
 
     if (typeof obj === 'string') {
       let result = obj;
+      
+      // CRITICAL: First, remove any invalid $('$json') patterns - $json is NOT a node
+      result = result.replace(/\$\(['"]\$json['"]\)/g, '$json');
+      
       const matches: Array<{match: string; nodeId: string; start: number; end: number}> = [];
       
       // Find all $('nodeId') patterns with their positions
       const regex = /\$\(['"]([^'"]+)['"]\)/g;
       let match;
-      while ((match = regex.exec(obj)) !== null) {
+      while ((match = regex.exec(result)) !== null) {
+        const nodeId = match[1].trim();
+        // CRITICAL: Skip $json - it's not a node reference
+        if (nodeId === '$json' || nodeId.startsWith('$json')) {
+          continue; // Skip this match, it's not a node reference
+        }
         matches.push({
           match: match[0],
-          nodeId: match[1].trim(),
+          nodeId: nodeId,
           start: match.index,
           end: match.index + match[0].length
         });
@@ -555,6 +596,13 @@ export class DependencyBuilder {
       // Process matches in reverse order to preserve indices
       for (let i = matches.length - 1; i >= 0; i--) {
         const { match: fullMatch, nodeId, start, end } = matches[i];
+        
+        // Double-check: never treat $json as a node
+        if (nodeId === '$json' || nodeId.startsWith('$json')) {
+          // Replace with plain $json
+          result = result.substring(0, start) + '$json' + result.substring(end);
+          continue;
+        }
         
         if (validNodeIds.has(nodeId)) {
           // Valid reference - keep it
