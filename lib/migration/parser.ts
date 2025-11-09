@@ -12,9 +12,37 @@ export class N8nParser {
     try {
       const workflow = JSON.parse(jsonContent);
       
-      // Validate basic structure
-      if (!workflow.name || !workflow.nodes || !Array.isArray(workflow.nodes)) {
-        throw new Error('Invalid n8n workflow structure: missing name or nodes');
+      // Validate nodes exist
+      if (!workflow.nodes || !Array.isArray(workflow.nodes)) {
+        throw new Error('Invalid n8n workflow structure: missing nodes array');
+      }
+
+      // Auto-generate name if missing (handles template exports without name field)
+      let workflowName = workflow.name;
+      if (!workflowName) {
+        // Try to get name from meta.templateId
+        if (workflow.meta?.templateId) {
+          workflowName = `Template #${workflow.meta.templateId}`;
+        }
+        // Try to get name from meta.instanceId
+        else if (workflow.meta?.instanceId) {
+          workflowName = `Workflow Instance ${workflow.meta.instanceId.substring(0, 8)}`;
+        }
+        // Try to get name from first trigger node
+        else {
+          const firstTrigger = workflow.nodes.find((n: any) => 
+            n.type?.includes('webhook') || 
+            n.type?.includes('trigger') ||
+            n.type?.includes('schedule')
+          );
+          if (firstTrigger?.name) {
+            workflowName = `${firstTrigger.name} Workflow`;
+          }
+          // Final fallback
+          else {
+            workflowName = 'Untitled Workflow';
+          }
+        }
       }
 
       // Normalize connections
@@ -24,7 +52,7 @@ export class N8nParser {
       const normalizedNodes = this.normalizeNodes(workflow.nodes);
 
       return {
-        name: workflow.name,
+        name: workflowName,
         nodes: normalizedNodes,
         connections: normalizedConnections,
         active: workflow.active || false,
@@ -53,9 +81,9 @@ export class N8nParser {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    // Check for required fields
+    // Note: Workflow name is now auto-generated if missing, so this check is informational only
     if (!workflow.name) {
-      errors.push('Workflow name is required');
+      warnings.push('Workflow name was auto-generated (original workflow missing name field)');
     }
 
     if (!workflow.nodes || workflow.nodes.length === 0) {
@@ -92,6 +120,7 @@ export class N8nParser {
 
   /**
    * Normalize n8n connections structure
+   * CRITICAL: Preserves output index for switch/if nodes (the array index in portConnections)
    */
   private normalizeConnections(connections: Record<string, any>): Record<string, N8nConnection[]> {
     const normalized: Record<string, N8nConnection[]> = {};
@@ -99,28 +128,32 @@ export class N8nParser {
     for (const [sourceNode, connectionData] of Object.entries(connections)) {
       if (Array.isArray(connectionData)) {
         // Handle array format: [connection1, connection2, ...]
-        normalized[sourceNode] = connectionData.map(conn => ({
+        normalized[sourceNode] = connectionData.map((conn, outputIndex) => ({
           node: conn.node || conn.targetNode || '',
           type: conn.type || 'main',
-          index: conn.index || 0
+          index: conn.index !== undefined ? conn.index : outputIndex, // Use outputIndex if conn.index not provided
+          outputIndex: outputIndex // Preserve output index for switch/if nodes
         }));
       } else if (connectionData && typeof connectionData === 'object') {
         // Handle object format: { main: [[conn1]], ai_memory: [[conn2]] }
+        // CRITICAL: The array index in portConnections is the output index (for switch/if branches)
         const allConnections: N8nConnection[] = [];
         
         for (const [portType, portConnections] of Object.entries(connectionData)) {
           if (Array.isArray(portConnections)) {
-            for (const portConnection of portConnections) {
+            // Each element in portConnections array represents a different output/branch
+            portConnections.forEach((portConnection, outputIndex) => {
               if (Array.isArray(portConnection)) {
                 for (const conn of portConnection) {
                   allConnections.push({
                     node: conn.node || conn.targetNode || '',
                     type: portType,
-                    index: conn.index || 0
+                    index: conn.index !== undefined ? conn.index : outputIndex,
+                    outputIndex: outputIndex // CRITICAL: Preserve output index for switch/if branches
                   });
                 }
               }
-            }
+            });
           }
         }
         

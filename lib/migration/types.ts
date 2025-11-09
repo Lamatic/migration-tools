@@ -31,6 +31,7 @@ export interface N8nConnection {
   node: string;
   type: string;
   index: number;
+  outputIndex?: number; // For switch/if nodes: which output branch (0, 1, 2, etc.)
 }
 
 // Lamatic workflow structure
