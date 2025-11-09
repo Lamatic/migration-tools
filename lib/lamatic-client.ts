@@ -4,6 +4,7 @@ import { Lamatic } from 'lamatic';
 const lamaticClient = new Lamatic({
   apiKey: process.env.LAMATIC_API_KEY || '',
   endpoint: process.env.LAMATIC_ENDPOINT || 'https://api.lamatic.ai',
+  projectId: process.env.LAMATIC_PROJECT_ID || 'migration-tool',
 });
 
 export { lamaticClient };
