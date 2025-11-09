@@ -960,6 +960,8 @@ export class NodeMapper {
       .replace(/=\{\{\s*\$json[^}]*\}\}/g, '') // Remove ={{ $json... }}
       .replace(/\$json\.[^\s}]*/g, '') // Remove $json.field references
       .replace(/\{\{.*?\}\}/g, '') // Remove any remaining {{ ... }}
+      .replace(/^=\s*$/, '') // Remove standalone = sign
+      .replace(/^=\s+/, '') // Remove leading = and whitespace
       .trim();
     
     // If result is empty or only whitespace, return empty string
@@ -1019,6 +1021,31 @@ export class NodeMapper {
     }
     
     return cleaned;
+  }
+
+  /**
+   * Recursively cleans all string values in an object from $json references
+   */
+  private cleanObjectFromJson(obj: any): any {
+    if (obj == null) return obj;
+    
+    if (typeof obj === 'string') {
+      return this.cleanJsonReferences(obj);
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.cleanObjectFromJson(item));
+    }
+    
+    if (typeof obj === 'object') {
+      const cleaned: Record<string, any> = {};
+      for (const [key, value] of Object.entries(obj)) {
+        cleaned[key] = this.cleanObjectFromJson(value);
+      }
+      return cleaned;
+    }
+    
+    return obj;
   }
 
   /**
@@ -1299,11 +1326,14 @@ export class NodeMapper {
         };
 
       case 'variablesNode':
+        // Clean the values object before stringifying
+        const rawValues = this.getNestedValue(n8nNode.parameters, 'values') || {};
+        const cleanedValues = this.cleanObjectFromJson(rawValues);
         return {
           ...baseNode,
           values: {
             // variablesNode.mapping must be a JSON string
-            mapping: JSON.stringify(this.getNestedValue(n8nNode.parameters, 'values') || {})
+            mapping: JSON.stringify(cleanedValues)
           },
           'x-runtime': xRuntime,
           '_flowMetadata': flowMetadata,
@@ -1342,15 +1372,20 @@ export class NodeMapper {
       // ==========================================
 
       case 'gmailNode':
+        // Clean $json references from subject and message - they should not be in values
+        const subject = this.cleanJsonReferences(this.getNestedValue(n8nNode.parameters, 'subject') || '');
+        const message = this.cleanJsonReferences(this.getNestedValue(n8nNode.parameters, 'message') || '');
+        const to = this.cleanJsonReferences(this.getNestedValue(n8nNode.parameters, 'to') || '');
+        
         return {
           ...baseNode,
           values: {
             credentials: '',
             operation: this.getNestedValue(n8nNode.parameters, 'operation') || 'send',
             resource: this.getNestedValue(n8nNode.parameters, 'resource') || 'message',
-            to: this.getNestedValue(n8nNode.parameters, 'to') || '',
-            subject: this.getNestedValue(n8nNode.parameters, 'subject') || '',
-            message: this.getNestedValue(n8nNode.parameters, 'message') || '',
+            to: to,
+            subject: subject,
+            message: message,
             options: this.getNestedValue(n8nNode.parameters, 'options') || {},
           },
           'x-runtime': xRuntime,
@@ -1390,6 +1425,10 @@ export class NodeMapper {
         };
 
       case 'airtableNode':
+        // Clean fields object - recursively clean all string values
+        const rawFields = this.getNestedValue(n8nNode.parameters, 'fields') || {};
+        const cleanedFields = this.cleanObjectFromJson(rawFields);
+        
         return {
           ...baseNode,
           values: {
@@ -1397,7 +1436,7 @@ export class NodeMapper {
             operation: this.getNestedValue(n8nNode.parameters, 'operation') || 'create',
             baseId: this.getNestedValue(n8nNode.parameters, 'application') || '',
             tableName: this.getNestedValue(n8nNode.parameters, 'table') || '',
-            fields: this.getNestedValue(n8nNode.parameters, 'fields') || {},
+            fields: cleanedFields,
             options: this.getNestedValue(n8nNode.parameters, 'options') || {},
           },
           'x-runtime': xRuntime,
@@ -1405,6 +1444,8 @@ export class NodeMapper {
         };
 
       case 'teamsNode':
+        // Clean message field from $json references
+        const teamsMessage = this.cleanJsonReferences(this.getNestedValue(n8nNode.parameters, 'messageText') || '');
         return {
           ...baseNode,
           values: {
@@ -1413,7 +1454,7 @@ export class NodeMapper {
             resource: this.getNestedValue(n8nNode.parameters, 'resource') || 'message',
             teamId: this.getNestedValue(n8nNode.parameters, 'teamId') || '',
             channelId: this.getNestedValue(n8nNode.parameters, 'channelId') || '',
-            message: this.getNestedValue(n8nNode.parameters, 'messageText') || '',
+            message: teamsMessage,
             options: this.getNestedValue(n8nNode.parameters, 'options') || {},
           },
           'x-runtime': xRuntime,
@@ -1421,6 +1462,8 @@ export class NodeMapper {
         };
 
       case 'discordNode':
+        // Clean message field from $json references
+        const discordMessage = this.cleanJsonReferences(this.getNestedValue(n8nNode.parameters, 'content') || '');
         return {
           ...baseNode,
           values: {
@@ -1428,7 +1471,7 @@ export class NodeMapper {
             operation: this.getNestedValue(n8nNode.parameters, 'operation') || 'sendMessage',
             resource: this.getNestedValue(n8nNode.parameters, 'resource') || 'message',
             channelId: this.getNestedValue(n8nNode.parameters, 'channelId') || '',
-            message: this.getNestedValue(n8nNode.parameters, 'content') || '',
+            message: discordMessage,
             options: this.getNestedValue(n8nNode.parameters, 'options') || {},
           },
           'x-runtime': xRuntime,
