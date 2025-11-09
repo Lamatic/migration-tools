@@ -165,6 +165,68 @@ SUPPORTED_FILE_TYPES=.json
    - Add your API key to environment variables
    - Test the connection
 
+## 🚀 Deployment
+
+### Deploy to Vercel
+
+The easiest way to deploy this application is using Vercel:
+
+#### Quick Deploy (Recommended)
+
+1. **Push to GitHub**
+   ```bash
+   git add .
+   git commit -m "Ready for deployment"
+   git push origin main
+   ```
+
+2. **Import to Vercel**
+   - Go to [vercel.com](https://vercel.com)
+   - Click "Add New Project"
+   - Import your GitHub repository
+   - Set root directory to `templates/embed/n8n-migration` (if deploying from repo root)
+
+3. **Configure Environment Variables**
+   - Add all variables from `env.example`
+   - Set `NODE_ENV=production`
+   - Add your `LAMATIC_API_KEY`
+
+4. **Deploy**
+   - Click "Deploy"
+   - Your app will be live in minutes!
+
+#### Using Vercel CLI
+
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Navigate to project
+cd templates/embed/n8n-migration
+
+# Deploy
+vercel
+
+# Set environment variables
+vercel env add LAMATIC_API_KEY
+vercel env add LAMATIC_ENDPOINT
+# ... add other variables
+
+# Deploy to production
+vercel --prod
+```
+
+📖 **For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md)**
+
+### Other Platforms
+
+This is a standard Next.js application and can be deployed to:
+- **Vercel** (Recommended) - Zero-config deployment
+- **Netlify** - Similar to Vercel
+- **AWS Amplify** - AWS hosting
+- **Railway** - Simple container deployment
+- **Docker** - Container-based deployment
+
 ## 🧪 Testing
 
 ### Test with Sample Workflow

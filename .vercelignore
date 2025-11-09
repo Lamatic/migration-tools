@@ -1,0 +1,28 @@
+# Files to ignore during Vercel deployment
+
+# Documentation files (optional - can be included if needed)
+*.md
+!README.md
+
+# Test files
+**/test-data/**
+**/scripts/test-*.js
+**/__tests__/**
+
+# Development files
+.env.local
+.env.development
+
+# Build artifacts (handled by Vercel)
+.next/
+out/
+dist/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
