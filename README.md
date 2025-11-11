@@ -148,6 +148,7 @@ Create a `.env.local` file:
 # Lamatic API Configuration
 LAMATIC_API_KEY=your_lamatic_api_key
 LAMATIC_ENDPOINT=https://api.lamatic.ai
+LAMATIC_PROJECT_ID=migration-tool
 
 # Migration Settings
 MAX_FILE_SIZE=10485760  # 10MB in bytes
@@ -171,9 +172,11 @@ SUPPORTED_FILE_TYPES=.json
 
 The easiest way to deploy this application is using Vercel:
 
+> ✅ **Private repositories work perfectly!** When you connect GitHub to Vercel, you'll authorize access to your private repo. No code changes needed.
+
 #### Quick Deploy (Recommended)
 
-1. **Push to GitHub**
+1. **Push to GitHub** (private repo is fine!)
    ```bash
    git add .
    git commit -m "Ready for deployment"
@@ -182,6 +185,8 @@ The easiest way to deploy this application is using Vercel:
 
 2. **Import to Vercel**
    - Go to [vercel.com](https://vercel.com)
+   - Sign in with GitHub
+   - **First time?** Authorize Vercel to access your repositories (select your private repo)
    - Click "Add New Project"
    - Import your GitHub repository
    - Set root directory to `templates/embed/n8n-migration` (if deploying from repo root)
@@ -190,6 +195,7 @@ The easiest way to deploy this application is using Vercel:
    - Add all variables from `env.example`
    - Set `NODE_ENV=production`
    - Add your `LAMATIC_API_KEY`
+   - Set `LAMATIC_PROJECT_ID` (default: `migration-tool`)
 
 4. **Deploy**
    - Click "Deploy"
