@@ -417,10 +417,14 @@ function removeInvalidReferences(obj: any, validNodeIds: Set<string>): any {
   
   if (typeof obj === 'object') {
     const cleaned: Record<string, any> = {};
+    // Fields that must be preserved even if empty (required fields)
+    const requiredFields = ['flowId', 'requestInput', 'subflowId'];
+    
     for (const [k, v] of Object.entries(obj)) {
       const cleanedValue = removeInvalidReferences(v, validNodeIds);
-      // Only include non-empty cleaned values (unless it's a number/boolean/null/array with items)
-      if (cleanedValue !== '' || typeof cleanedValue === 'number' || typeof cleanedValue === 'boolean' || cleanedValue === null || (Array.isArray(cleanedValue) && cleanedValue.length > 0)) {
+      // Preserve required fields even if empty, or include non-empty values
+      const isRequiredField = requiredFields.includes(k);
+      if (isRequiredField || cleanedValue !== '' || typeof cleanedValue === 'number' || typeof cleanedValue === 'boolean' || cleanedValue === null || (Array.isArray(cleanedValue) && cleanedValue.length > 0)) {
         cleaned[k] = cleanedValue;
       }
     }

@@ -137,10 +137,10 @@ export class NodeMapper {
       notes: 'Custom code execution node',
     });
 
-    // If Node Mapping
+    // If Node Mapping → conditionNode (Lamatic uses conditionNode with top-level condition array)
     this.addMapping({
       n8nType: 'n8n-nodes-base.if',
-      lamaticType: 'branchNode',
+      lamaticType: 'conditionNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'conditions', lamaticParameter: 'conditions', required: true },
@@ -177,10 +177,10 @@ export class NodeMapper {
       notes: 'Merge data from multiple inputs',
     });
 
-    // Switch Node Mapping
+    // Switch Node Mapping → conditionNode (Lamatic uses conditionNode with top-level condition array)
     this.addMapping({
       n8nType: 'n8n-nodes-base.switch',
-      lamaticType: 'branchNode',
+      lamaticType: 'conditionNode',
       isSupported: true,
       parameterMappings: [
         { n8nParameter: 'mode', lamaticParameter: 'mode', required: true, defaultValue: 'rules' },
@@ -1679,26 +1679,18 @@ export class NodeMapper {
         };
 
       case 'conditionNode':
-        // Filter/condition node - clean conditions from $json references
-        const filterConditions = this.getNestedValue(n8nNode.parameters, 'conditions');
-        const cleanedConditions = this.cleanConditionsFromJson(filterConditions);
+        // CRITICAL: Lamatic conditionNode structure is different from n8n
+        // It has a top-level 'condition' array that maps branch labels to target nodeIds
+        // The condition array will be populated later in buildNodeDependencies
+        // based on actual n8n connections
         
-        return {
-          ...baseNode,
-          values: {
-            conditions: cleanedConditions || []
-          },
-          'x-runtime': xRuntime,
-          '_flowMetadata': flowMetadata,
-        };
-
-      case 'branchNode':
-        // Handle both if (conditions) and switch (rules) nodes
         const ifConditions = this.getNestedValue(n8nNode.parameters, 'conditions');
         const switchRules = this.getNestedValue(n8nNode.parameters, 'rules');
         
-        // For switch nodes: rules is an object with rules array
-        // For if nodes: conditions is an object with conditions array
+        // Determine if this is a filter node (n8n-nodes-base.filter) or if/switch node
+        const isFilterNode = n8nNode.type === 'n8n-nodes-base.filter';
+        
+        // Build branches array for condition labels
         let branches: Array<{label: string; value: string}> = [];
         let finalConditions: any = null;
         let finalRules: any = null;
@@ -1715,35 +1707,95 @@ export class NodeMapper {
           }));
         } else if (ifConditions && ifConditions.conditions && Array.isArray(ifConditions.conditions)) {
           // If node with conditions object
-          finalConditions = {
-            ...ifConditions,
-            conditions: this.cleanConditionsFromJson(ifConditions.conditions)
-          };
+          finalConditions = ifConditions;
           branches = [
             { label: 'True', value: '0' },
             { label: 'False', value: '1' }
           ];
         } else if (Array.isArray(ifConditions)) {
           // If node with conditions array
-          finalConditions = this.cleanConditionsFromJson(ifConditions);
+          finalConditions = { conditions: ifConditions };
+          branches = [
+            { label: 'True', value: '0' },
+            { label: 'False', value: '1' }
+          ];
+        } else {
+          // Default branches for if nodes
           branches = [
             { label: 'True', value: '0' },
             { label: 'False', value: '1' }
           ];
         }
         
+        // Build condition values structure for Lamatic
+        // Transform n8n conditions to Lamatic format with operands
+        const conditionValues: any = {
+          conditions: []
+        };
+        
+        // Transform n8n conditions to Lamatic format
+        let lamaticCondition: any = {};
+        if (finalConditions && finalConditions.conditions && Array.isArray(finalConditions.conditions)) {
+          const combinator = finalConditions.combinator || 'and';
+          const operands = finalConditions.conditions.map((cond: any) => {
+            // Transform n8n condition to Lamatic operand format
+            // n8n operator can be: { type: "string", operation: "notContains" } or just a string
+            let n8nOperator: string = 'equals';
+            if (cond.operator) {
+              if (typeof cond.operator === 'string') {
+                n8nOperator = cond.operator;
+              } else if (typeof cond.operator === 'object') {
+                n8nOperator = cond.operator.operation || cond.operator.type || 'equals';
+              }
+            }
+            
+            const operator = this.mapN8nOperatorToLamatic(n8nOperator);
+            const leftValue = cond.leftValue || '';
+            
+            // For notEmpty/empty operations, set appropriate value
+            let value = cond.rightValue !== undefined ? String(cond.rightValue) : '';
+            if (n8nOperator === 'notEmpty' || n8nOperator === 'empty') {
+              value = '';
+            }
+            
+            return {
+              name: leftValue,
+              operator: operator,
+              value: value
+            };
+          });
+          
+          lamaticCondition = {
+            operator: null, // Top-level operator (null means use combinator)
+            operands: operands,
+            combinator: combinator
+          };
+        }
+        
+        // Build conditions array with proper structure
+        for (let i = 0; i < branches.length; i++) {
+          const branch = branches[i];
+          const conditionEntry: any = {
+            label: branch.label,
+            value: `${baseNode.nodeId}-${branch.label.toLowerCase()}`,
+            condition: i === 0 ? lamaticCondition : {} // First branch (True) has conditions, False is empty
+          };
+          conditionValues.conditions.push(conditionEntry);
+        }
+        
         return {
           ...baseNode,
-          values: {
-            conditions: finalConditions || ifConditions || [],
-            rules: finalRules || switchRules || null,
-            branches: branches.length > 0 ? branches : [
-              { label: 'True', value: '0' },
-              { label: 'False', value: '1' }
-            ]
-          },
+          nodeType: 'conditionNode', // Ensure it's conditionNode, not branchNode
+          // Top-level condition array will be added in buildNodeDependencies
+          // based on actual n8n connections
+          values: conditionValues,
           'x-runtime': xRuntime,
-          '_flowMetadata': flowMetadata,
+          '_flowMetadata': {
+            ...flowMetadata,
+            branches: branches, // Store branches metadata for later use
+            originalConditions: finalConditions || ifConditions,
+            originalRules: finalRules || switchRules
+          },
         };
 
       case 'chatTriggerNode':
@@ -1782,14 +1834,24 @@ export class NodeMapper {
         };
 
       case 'flowNode':
+        // For subflows: flowId is always empty placeholder - user must fill after creating subflow in Lamatic
+        // Map workflowInputs.value to requestInput (the data passed to subflow)
+        const workflowInputs = this.getNestedValue(n8nNode.parameters, 'workflowInputs');
+        const inputData = workflowInputs?.value || workflowInputs || {};
+        
         return {
           ...baseNode,
           values: {
-            flowId: this.getNestedValue(n8nNode.parameters, 'workflowId') || '',
-            requestInput: JSON.stringify(this.getNestedValue(n8nNode.parameters, 'options') || {})
+            flowId: '', // Placeholder - user must provide flowId after creating subflow in Lamatic
+            requestInput: JSON.stringify(inputData) // Map workflowInputs.value to requestInput
           },
           'x-runtime': xRuntime,
-          '_flowMetadata': flowMetadata,
+          '_flowMetadata': {
+            ...flowMetadata,
+            requiresManualFlowId: true,
+            originalWorkflowId: this.getNestedValue(n8nNode.parameters, 'workflowId') || '',
+            note: 'This flowNode requires a flowId. Create the subflow in Lamatic first, then update this flowId.'
+          },
         };
 
       case 'extractFromFileNode':
@@ -2273,6 +2335,43 @@ export class NodeMapper {
     
     // Default fallback
     return 'node';
+  }
+
+  /**
+   * Maps n8n operator to Lamatic operator format
+   */
+  private mapN8nOperatorToLamatic(n8nOperator: string | any): string {
+    const operatorMap: Record<string, string> = {
+      'equals': '==',
+      'notEquals': '!=',
+      'not_equals': '!=',
+      'greater': '>',
+      'greaterEqual': '>=',
+      'smaller': '<',
+      'smallerEqual': '<=',
+      'contains': 'contains',
+      'notContains': 'not_contains',
+      'not_contains': 'not_contains',
+      'startsWith': 'starts_with',
+      'endsWith': 'ends_with',
+      'empty': '==', // empty means == ''
+      'notEmpty': '!=', // notEmpty means != ''
+      'regex': 'regex',
+      'exists': 'exists',
+      'notExists': 'not_exists'
+    };
+    
+    // Handle both string and object operators
+    let opStr: string;
+    if (typeof n8nOperator === 'string') {
+      opStr = n8nOperator;
+    } else if (n8nOperator && typeof n8nOperator === 'object') {
+      opStr = n8nOperator.operation || n8nOperator.type || 'equals';
+    } else {
+      opStr = 'equals';
+    }
+    
+    return operatorMap[opStr] || opStr;
   }
 
   /**

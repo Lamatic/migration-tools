@@ -39,6 +39,10 @@ export class DependencyBuilder {
     // Build forward connections for Lamatic format
     const connections = this.buildLamaticConnections(n8nWorkflow, nodeIdMap);
     
+    // CRITICAL: Validate connections consistency
+    // Ensure all nodes in needs arrays have corresponding connections
+    this.validateConnectionsConsistency(nodesWithDependencies, connections, warnings);
+    
     // CRITICAL: Break cycles caused by splitInBatches loop-backs
     // This must be done BEFORE calculating execution order
     this.breakSplitInBatchesCycles(nodesWithDependencies, n8nWorkflow, nodeIdMap);
@@ -227,6 +231,9 @@ export class DependencyBuilder {
           for (const conn of connectionArray) {
             if (!conn || !conn.node) continue;
             
+            // CRITICAL: Match by node name (case-sensitive for accuracy)
+            // For branch nodes (if/switch), ALL outputs should create dependencies
+            // regardless of outputIndex - each branch target needs the branch node
             if (conn.node === n8nNode.name) {
               // This node receives input from sourceNodeName
               const sourceN8nId = n8nNodeNameToId.get(sourceNodeName);
@@ -272,6 +279,12 @@ export class DependencyBuilder {
                       }
                     }
                     
+                    // CRITICAL: For branch nodes (if/switch), ensure ALL branch targets get the dependency
+                    // The outputIndex doesn't matter for needs - all branches depend on the branch node
+                    // This ensures proper execution order and connection tracking
+                    const isBranchNode = sourceN8nNode?.type === 'n8n-nodes-base.if' || 
+                                       sourceN8nNode?.type === 'n8n-nodes-base.switch';
+                    
                     // Special case: Merge nodes can have multiple inputs from the same source
                     // When a node connects to a merge node with multiple indices (e.g., index 0, 1, 2),
                     // those represent different input ports of the merge. However, we should only
@@ -286,13 +299,22 @@ export class DependencyBuilder {
                       needs.add(sourceLamaticId);
                     } else {
                       // Otherwise, create the dependency normally
+                      // This handles both regular connections and branch node connections
                       needs.add(sourceLamaticId);
                     }
                   }
                 }
+              } else {
+                // Log warning if source node not found in mapping
+                if (!n8nNodeNameToId.has(sourceNodeName)) {
+                  warnings.push(`Source node '${sourceNodeName}' not found in node mapping (connecting to '${n8nNode.name}')`);
+                }
               }
             }
           }
+        } else {
+          // Log warning for unexpected connection format
+          warnings.push(`Unexpected connection format for node '${sourceNodeName}': expected array, got ${typeof connectionArray}`);
         }
       }
       
@@ -400,6 +422,11 @@ export class DependencyBuilder {
         }
       }
     }
+    
+    // CRITICAL: Build top-level 'condition' array for conditionNode nodes
+    // Lamatic uses conditionNode with a top-level condition array that maps branch labels to target nodeIds
+    // This replaces the connections object for condition nodes
+    this.buildConditionArrays(lamaticNodes, n8nWorkflow, nodeIdMap, n8nNodeNameToId, n8nNodeIdToLamaticId);
     
     // Debug: log valid node IDs for troubleshooting
     console.debug('[buildNodeDependencies] validLamaticIds:', Array.from(validLamaticIds).join(', '));
@@ -632,10 +659,14 @@ export class DependencyBuilder {
     
     if (typeof obj === 'object') {
       const out: Record<string, any> = {};
+      // Fields that must be preserved even if empty (required fields)
+      const requiredFields = ['flowId', 'requestInput', 'subflowId'];
+      
       for (const [k, v] of Object.entries(obj)) {
         const validated = this.validateNodeReferences(v, validNodeIds);
-        // Only include non-empty cleaned values (unless it's a number/boolean/null/array with items)
-        if (validated !== '' || typeof validated === 'number' || typeof validated === 'boolean' || validated === null || (Array.isArray(validated) && validated.length > 0)) {
+        // Preserve required fields even if empty, or include non-empty values
+        const isRequiredField = requiredFields.includes(k);
+        if (isRequiredField || validated !== '' || typeof validated === 'number' || typeof validated === 'boolean' || validated === null || (Array.isArray(validated) && validated.length > 0)) {
           out[k] = validated;
         }
       }
@@ -773,6 +804,7 @@ export class DependencyBuilder {
     // Build detailed connections based on actual n8n connections
     // NOTE: connections are normalized by parser to Record<string, N8nConnection[]>
     // So connectionData is already an array of connections, not nested structure
+    // CRITICAL: Skip conditionNode nodes - they use top-level 'condition' array instead of connections
     for (const [sourceNodeName, connectionArray] of Object.entries(n8nWorkflow.connections)) {
       // Find the source node in the n8n workflow
       const sourceNode = n8nWorkflow.nodes.find(n => n.name === sourceNodeName);
@@ -789,6 +821,19 @@ export class DependencyBuilder {
       if (!connections[sourceLamaticId]) {
         console.warn(`[buildLamaticConnections] Connection entry not initialized for: ${sourceLamaticId}`);
         continue;
+      }
+      
+      // CRITICAL: Skip building connections for conditionNode - they use top-level 'condition' array
+      // Find the lamatic node to check its type
+      const sourceLamaticNode = Array.from(nodeIdMap.entries()).find(([n8nId, lamaticId]) => lamaticId === sourceLamaticId);
+      if (sourceLamaticNode) {
+        const sourceN8nId = sourceLamaticNode[0];
+        const sourceN8nNode = n8nWorkflow.nodes.find(n => n.id === sourceN8nId);
+        // If this is an if/switch node, it will be mapped to conditionNode and should be skipped
+        if (sourceN8nNode && (sourceN8nNode.type === 'n8n-nodes-base.if' || sourceN8nNode.type === 'n8n-nodes-base.switch')) {
+          // Skip - conditionNode uses top-level 'condition' array, not connections object
+          continue;
+        }
       }
       
       // Handle normalized connection format: N8nConnection[] (flat array)
@@ -838,11 +883,36 @@ export class DependencyBuilder {
             connections[sourceLamaticId].connections[lamaticPortType] = [];
           }
           
-          // Process each output index
-          for (const [outputIndexStr, conns] of Object.entries(connectionsByIndex)) {
-            const outputIndex = parseInt(outputIndexStr, 10);
+          // CRITICAL: For branch nodes, we need to ensure all output indices are properly initialized
+          // Get all output indices and ensure array is dense (no gaps)
+          const outputIndices = Object.keys(connectionsByIndex)
+            .map(k => parseInt(k, 10))
+            .sort((a, b) => a - b);
+          
+          // Get maximum output index to initialize array properly
+          const maxOutputIndex = outputIndices.length > 0 ? Math.max(...outputIndices) : -1;
+          
+          // CRITICAL: Initialize array to be dense (all indices from 0 to maxOutputIndex must exist)
+          // This ensures branch nodes have proper structure: [output0, output1, output2, ...]
+          if (maxOutputIndex >= 0) {
+            while (connections[sourceLamaticId].connections[lamaticPortType].length <= maxOutputIndex) {
+              connections[sourceLamaticId].connections[lamaticPortType].push([]);
+            }
+          }
+          
+          // Process each output index in order
+          for (const outputIndex of outputIndices) {
+            const conns = connectionsByIndex[outputIndex];
+            if (!conns || conns.length === 0) {
+              // Even if no connections, ensure the array slot exists for branch nodes
+              // This maintains the dense array structure
+              if (outputIndex >= 0 && !connections[sourceLamaticId].connections[lamaticPortType][outputIndex]) {
+                connections[sourceLamaticId].connections[lamaticPortType][outputIndex] = [];
+              }
+              continue;
+            }
             
-            // Ensure array exists for this output index
+            // Ensure this specific output index exists (should already exist from above, but double-check)
             if (!connections[sourceLamaticId].connections[lamaticPortType][outputIndex]) {
               connections[sourceLamaticId].connections[lamaticPortType][outputIndex] = [];
             }
@@ -1503,15 +1573,122 @@ export class DependencyBuilder {
       }
     }
     
-    // Check for orphaned nodes
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
+  }
+
+  /**
+   * Validates that connections are consistent with needs arrays
+   * Ensures all dependencies are properly reflected in connections object
+   * CRITICAL: Special handling for branch nodes to ensure all outputs are connected
+   */
+  private validateConnectionsConsistency(
+    nodes: LamaticNode[],
+    connections: Record<string, LamaticConnection>,
+    warnings: string[]
+  ): void {
     const allNodeIds = new Set(nodes.map(node => node.nodeId));
-    const referencedNodeIds = new Set<string>();
+    const nodeMap = new Map(nodes.map(node => [node.nodeId, node]));
     
+    // Build reverse map: for each node, which nodes depend on it (from needs arrays)
+    const reverseDependencies = new Map<string, Set<string>>();
+    for (const node of nodes) {
+      for (const depId of node.needs || []) {
+        if (!reverseDependencies.has(depId)) {
+          reverseDependencies.set(depId, new Set());
+        }
+        reverseDependencies.get(depId)!.add(node.nodeId);
+      }
+    }
+    
+    // Check that all nodes with dependencies have connections defined
+    for (const [sourceNodeId, dependentNodeIds] of Array.from(reverseDependencies.entries())) {
+      const sourceConnection = connections[sourceNodeId];
+      if (!sourceConnection || !sourceConnection.connections) {
+        warnings.push(`Node '${sourceNodeId}' has dependencies but no connections object defined`);
+        continue;
+      }
+      
+      const sourceNode = nodeMap.get(sourceNodeId);
+      const isBranchNode = sourceNode?.nodeType === 'branchNode';
+      
+      // Check that all dependent nodes are in the connections
+      const connectedNodeIds = new Set<string>();
+      const connectionsByOutputIndex = new Map<number, Set<string>>();
+      
+      for (const [portType, portConnections] of Object.entries(sourceConnection.connections)) {
+        if (Array.isArray(portConnections)) {
+          // For branch nodes, track connections by outputIndex
+          portConnections.forEach((outputConnections, outputIndex) => {
+            if (Array.isArray(outputConnections)) {
+              if (!connectionsByOutputIndex.has(outputIndex)) {
+                connectionsByOutputIndex.set(outputIndex, new Set());
+              }
+              for (const connDetail of outputConnections) {
+                if (connDetail && connDetail.nodeId) {
+                  connectedNodeIds.add(connDetail.nodeId);
+                  connectionsByOutputIndex.get(outputIndex)!.add(connDetail.nodeId);
+                }
+              }
+            }
+          });
+        }
+      }
+      
+      // CRITICAL: For branch nodes, validate that all outputs have connections
+      if (isBranchNode) {
+        const branchValues = sourceNode?.values;
+        const expectedBranches = branchValues?.branches || [];
+        const expectedOutputCount = expectedBranches.length;
+        const actualOutputCount = connectionsByOutputIndex.size;
+        
+        // Get the actual connections from the connections object
+        const mainConnections = sourceConnection.connections?.main;
+        const actualConnectionsCount = Array.isArray(mainConnections) ? mainConnections.length : 0;
+        
+        if (actualOutputCount < expectedOutputCount) {
+          warnings.push(`Branch node '${sourceNodeId}' has ${expectedOutputCount} expected outputs but only ${actualOutputCount} outputs have connections`);
+        }
+        
+        if (actualConnectionsCount < expectedOutputCount) {
+          warnings.push(`Branch node '${sourceNodeId}' connections array has ${actualConnectionsCount} elements but ${expectedOutputCount} expected (branches: ${expectedBranches.map((b: any) => b.label).join(', ')})`);
+        }
+        
+        // Check that each expected branch has at least one connection
+        for (let i = 0; i < expectedOutputCount; i++) {
+          const branchLabel = expectedBranches[i]?.label || `Output ${i}`;
+          if (!connectionsByOutputIndex.has(i)) {
+            warnings.push(`Branch node '${sourceNodeId}' output index ${i} (${branchLabel}) has no connections in needs array`);
+          }
+          // Also check the actual connections array
+          if (Array.isArray(mainConnections) && (!mainConnections[i] || !Array.isArray(mainConnections[i]) || mainConnections[i].length === 0)) {
+            warnings.push(`Branch node '${sourceNodeId}' output index ${i} (${branchLabel}) has no connections in connections.main[${i}]`);
+          }
+        }
+      }
+      
+      // Check for missing connections (nodes in needs but not in connections)
+      for (const dependentId of Array.from(dependentNodeIds)) {
+        if (!connectedNodeIds.has(dependentId)) {
+          warnings.push(`Missing connection: '${sourceNodeId}' should connect to '${dependentId}' (found in needs array but not in connections)`);
+        }
+      }
+    }
+    
+    // Check for orphaned nodes (nodes in connections but not in nodes list)
+    const referencedNodeIds = new Set<string>();
     for (const connection of Object.values(connections)) {
       for (const portConnections of Object.values(connection.connections)) {
         for (const outputConnections of portConnections) {
-          for (const connDetail of outputConnections) {
-            referencedNodeIds.add(connDetail.nodeId);
+          if (Array.isArray(outputConnections)) {
+            for (const connDetail of outputConnections) {
+              if (connDetail && connDetail.nodeId) {
+                referencedNodeIds.add(connDetail.nodeId);
+              }
+            }
           }
         }
       }
@@ -1530,11 +1707,107 @@ export class DependencyBuilder {
     if (orphanedNodes.length > 0) {
       warnings.push(`${orphanedNodes.length} orphaned nodes found (no incoming or outgoing connections)`);
     }
+  }
+
+  /**
+   * Builds top-level 'condition' array for conditionNode nodes
+   * CRITICAL: Lamatic conditionNode uses a top-level condition array that maps branch labels to target nodeIds
+   * This replaces the connections object for condition nodes
+   */
+  private buildConditionArrays(
+    lamaticNodes: LamaticNode[],
+    n8nWorkflow: N8nWorkflow,
+    nodeIdMap: Map<string, string>,
+    n8nNodeNameToId: Map<string, string>,
+    n8nNodeIdToLamaticId: Map<string, string>
+  ): void {
+    // Find all conditionNode nodes
+    const conditionNodes = lamaticNodes.filter(node => node.nodeType === 'conditionNode');
     
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    };
+    for (const conditionNode of conditionNodes) {
+      // Find the corresponding n8n node
+      const n8nNode = n8nWorkflow.nodes.find(n => {
+        const lamaticId = nodeIdMap.get(n.id);
+        return lamaticId === conditionNode.nodeId;
+      });
+      
+      if (!n8nNode) continue;
+      
+      // Get branches from metadata (stored during node creation)
+      const branches = conditionNode._flowMetadata?.branches || [];
+      if (branches.length === 0) continue;
+      
+      // Get connections from n8n workflow for this node
+      // n8n connections format: { "main": [[conn1], [conn2]] } where array index is outputIndex
+      const n8nConnections: any = n8nWorkflow.connections[n8nNode.name];
+      if (!n8nConnections) continue;
+      
+      // Build condition array: map each branch to its target nodeId
+      const conditionArray: Array<{label: string; value: string}> = [];
+      
+      // Group connections by outputIndex
+      const connectionsByOutputIndex = new Map<number, string[]>();
+      
+      // Handle both normalized format (array) and original format (object with main/ai_memory)
+      let connectionList: any[] = [];
+      if (Array.isArray(n8nConnections)) {
+        // Normalized format: flat array with outputIndex property
+        connectionList = n8nConnections;
+      } else if (n8nConnections && typeof n8nConnections === 'object' && n8nConnections.main && Array.isArray(n8nConnections.main)) {
+        // Original format: { main: [[conn1], [conn2]] } - array index is outputIndex
+        n8nConnections.main.forEach((portConnections: any[], outputIndex: number) => {
+          if (Array.isArray(portConnections)) {
+            portConnections.forEach((conn: any) => {
+              if (conn && conn.node) {
+                connectionList.push({
+                  ...conn,
+                  outputIndex: outputIndex // Use array index as outputIndex
+                });
+              }
+            });
+          }
+        });
+      }
+      
+      // Process connections and group by outputIndex
+      for (const conn of connectionList) {
+        if (!conn || !conn.node) continue;
+        const outputIndex = conn.outputIndex !== undefined ? conn.outputIndex : (typeof conn.index === 'number' ? conn.index : 0);
+        
+        // Find target node
+        const targetN8nNode = n8nWorkflow.nodes.find(n => n.name === conn.node);
+        if (!targetN8nNode) continue;
+        
+        const targetLamaticId = n8nNodeIdToLamaticId.get(targetN8nNode.id);
+        if (!targetLamaticId) continue;
+        
+        if (!connectionsByOutputIndex.has(outputIndex)) {
+          connectionsByOutputIndex.set(outputIndex, []);
+        }
+        connectionsByOutputIndex.get(outputIndex)!.push(targetLamaticId);
+      }
+      
+      // Build condition array matching branches to target nodeIds
+      for (let i = 0; i < branches.length; i++) {
+        const branch = branches[i];
+        const outputIndex = parseInt(branch.value, 10);
+        const targetNodeIds = connectionsByOutputIndex.get(outputIndex) || [];
+        
+        // Use first target nodeId (Lamatic condition array uses single nodeId per branch)
+        const targetNodeId = targetNodeIds.length > 0 ? targetNodeIds[0] : null;
+        
+        if (targetNodeId) {
+          conditionArray.push({
+            label: branch.label,
+            value: targetNodeId // CRITICAL: value is the target nodeId, not the branch index
+          });
+        }
+      }
+      
+      // Add top-level condition array to the node
+      if (conditionArray.length > 0) {
+        (conditionNode as any).condition = conditionArray;
+      }
+    }
   }
 }
