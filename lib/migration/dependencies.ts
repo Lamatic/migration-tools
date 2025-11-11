@@ -240,11 +240,15 @@ export class DependencyBuilder {
               if (sourceN8nId) {
                 const sourceLamaticId = n8nNodeIdToLamaticId.get(sourceN8nId);
                 if (sourceLamaticId && sourceLamaticId !== currentNodeId) {
-                  // Special handling: ai_memory connections don't create direct dependencies for target node
-                  // ai_languageModel connections also don't create direct dependencies (they're used by agent, not vice versa)
-                  // But main connections always create dependencies
+                  // CRITICAL: Different connection types have different dependency semantics
+                  // - main: Data flow - creates dependency (target depends on source)
+                  // - ai_languageModel: Model reference - creates dependency (agent depends on model)
+                  // - ai_outputParser: Parser reference - creates dependency (agent depends on parser)
+                  // - ai_memory: Memory reference - creates dependency (agent depends on memory)
+                  // - ai_tool: Tool reference - creates dependency (agent depends on tool)
                   const connectionType = conn.type || 'main';
-                  if (connectionType === 'main') {
+                  // All connection types create dependencies, but we track them separately
+                  if (['main', 'ai_languageModel', 'ai_outputParser', 'ai_memory', 'ai_tool'].includes(connectionType)) {
                     // Get source node once
                     const sourceN8nNode = n8nWorkflow.nodes.find(n => n.id === sourceN8nId);
                     
@@ -928,9 +932,13 @@ export class DependencyBuilder {
               
               const targetLamaticId = nodeIdMap.get(targetNode.id);
               if (!targetLamaticId) {
-                console.warn(`[buildLamaticConnections] Target Lamatic ID not found for node: ${connection.node} (id: ${targetNode.id})`);
+                console.warn(`[buildLamaticConnections] Target Lamatic ID not found for node: ${connection.node} (id: ${targetNode.id}) from source: ${sourceNodeName}`);
                 continue;
               }
+              
+              // CRITICAL: Skip if target is a conditionNode (they don't receive via connections object)
+              // But wait - conditionNode CAN receive connections from other nodes, they just don't SEND via connections
+              // So we should NOT skip target conditionNode here
               
               // Add connection detail
               const connectionDetail: LamaticConnectionDetail = {
@@ -1021,6 +1029,8 @@ export class DependencyBuilder {
     switch (portType) {
       case 'ai_memory':
       case 'ai_languageModel':
+      case 'ai_outputParser':
+      case 'ai_tool':
         return 'ai_pipeline';
       case 'main':
       default:
@@ -1033,7 +1043,8 @@ export class DependencyBuilder {
    */
   private mapPortTypeToLamatic(n8nPortType: string, sourceNode: any, targetNode: any): string {
     // Use the n8n port type directly if it's already a Lamatic type
-    if (['main', 'ai_memory', 'ai_languageModel'].includes(n8nPortType)) {
+    // CRITICAL: Include all n8n connection types that Lamatic supports
+    if (['main', 'ai_memory', 'ai_languageModel', 'ai_outputParser', 'ai_tool'].includes(n8nPortType)) {
       return n8nPortType;
     }
     
@@ -1211,6 +1222,7 @@ export class DependencyBuilder {
       console.log(`[breakDiamondPatternCycles] Current needs: [${mergeNode.needs.join(', ')}]`);
 
       // Find all nodes that connect directly to this merge (these are the direct inputs)
+      // CRITICAL: Merge nodes only use 'main' connections for data flow
       const directInputs = new Set<string>();
       for (const [sourceNodeName, connectionArray] of Object.entries(n8nWorkflow.connections)) {
         if (Array.isArray(connectionArray)) {
@@ -1738,48 +1750,45 @@ export class DependencyBuilder {
       if (branches.length === 0) continue;
       
       // Get connections from n8n workflow for this node
-      // n8n connections format: { "main": [[conn1], [conn2]] } where array index is outputIndex
-      const n8nConnections: any = n8nWorkflow.connections[n8nNode.name];
-      if (!n8nConnections) continue;
+      // CRITICAL: Connections are normalized by parser to Record<string, N8nConnection[]>
+      // So n8nConnections should be an array of N8nConnection objects
+      const n8nConnections: N8nConnection[] = n8nWorkflow.connections[n8nNode.name];
+      if (!n8nConnections || !Array.isArray(n8nConnections) || n8nConnections.length === 0) {
+        // No connections found - this might be a conditionNode with no outputs
+        continue;
+      }
       
       // Build condition array: map each branch to its target nodeId
       const conditionArray: Array<{label: string; value: string}> = [];
       
       // Group connections by outputIndex
+      // CRITICAL: outputIndex is preserved in normalized connections
       const connectionsByOutputIndex = new Map<number, string[]>();
       
-      // Handle both normalized format (array) and original format (object with main/ai_memory)
-      let connectionList: any[] = [];
-      if (Array.isArray(n8nConnections)) {
-        // Normalized format: flat array with outputIndex property
-        connectionList = n8nConnections;
-      } else if (n8nConnections && typeof n8nConnections === 'object' && n8nConnections.main && Array.isArray(n8nConnections.main)) {
-        // Original format: { main: [[conn1], [conn2]] } - array index is outputIndex
-        n8nConnections.main.forEach((portConnections: any[], outputIndex: number) => {
-          if (Array.isArray(portConnections)) {
-            portConnections.forEach((conn: any) => {
-              if (conn && conn.node) {
-                connectionList.push({
-                  ...conn,
-                  outputIndex: outputIndex // Use array index as outputIndex
-                });
-              }
-            });
-          }
-        });
-      }
-      
-      // Process connections and group by outputIndex
-      for (const conn of connectionList) {
+      // Process normalized connections (array format with outputIndex property)
+      for (const conn of n8nConnections) {
         if (!conn || !conn.node) continue;
-        const outputIndex = conn.outputIndex !== undefined ? conn.outputIndex : (typeof conn.index === 'number' ? conn.index : 0);
+        
+        // CRITICAL: Use outputIndex from normalized connection (preserved by parser)
+        // outputIndex represents which branch/output of the conditionNode this connection comes from
+        const outputIndex = conn.outputIndex !== undefined ? conn.outputIndex : 
+                          (typeof conn.index === 'number' ? conn.index : 0);
+        
+        // Only process 'main' connections for conditionNode (other types like ai_languageModel don't apply)
+        if (conn.type !== 'main') continue;
         
         // Find target node
         const targetN8nNode = n8nWorkflow.nodes.find(n => n.name === conn.node);
-        if (!targetN8nNode) continue;
+        if (!targetN8nNode) {
+          console.warn(`[buildConditionArrays] Target node not found: ${conn.node} (from conditionNode ${n8nNode.name})`);
+          continue;
+        }
         
         const targetLamaticId = n8nNodeIdToLamaticId.get(targetN8nNode.id);
-        if (!targetLamaticId) continue;
+        if (!targetLamaticId) {
+          console.warn(`[buildConditionArrays] Target Lamatic ID not found for node: ${conn.node} (id: ${targetN8nNode.id})`);
+          continue;
+        }
         
         if (!connectionsByOutputIndex.has(outputIndex)) {
           connectionsByOutputIndex.set(outputIndex, []);
@@ -1788,6 +1797,8 @@ export class DependencyBuilder {
       }
       
       // Build condition array matching branches to target nodeIds
+      // CRITICAL: Include ALL branches, even if some don't have connections
+      // This ensures the condition array structure is complete
       for (let i = 0; i < branches.length; i++) {
         const branch = branches[i];
         const outputIndex = parseInt(branch.value, 10);
@@ -1801,12 +1812,21 @@ export class DependencyBuilder {
             label: branch.label,
             value: targetNodeId // CRITICAL: value is the target nodeId, not the branch index
           });
+        } else {
+          // Warn if a branch has no connections - this might indicate a missing connection
+          console.warn(`[buildConditionArrays] ConditionNode '${conditionNode.nodeName}' branch '${branch.label}' (outputIndex ${outputIndex}) has no connections`);
         }
       }
       
       // Add top-level condition array to the node
-      if (conditionArray.length > 0) {
-        (conditionNode as any).condition = conditionArray;
+      // CRITICAL: Always add the condition array, even if empty (structure is important)
+      (conditionNode as any).condition = conditionArray;
+      
+      // Log for debugging
+      if (conditionArray.length === 0) {
+        console.warn(`[buildConditionArrays] ConditionNode '${conditionNode.nodeName}' has no condition array entries (no connections found)`);
+      } else if (conditionArray.length < branches.length) {
+        console.warn(`[buildConditionArrays] ConditionNode '${conditionNode.nodeName}' has ${conditionArray.length} condition entries but ${branches.length} branches`);
       }
     }
   }

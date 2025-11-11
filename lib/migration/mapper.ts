@@ -1701,9 +1701,11 @@ export class NodeMapper {
             ...switchRules,
             rules: switchRules.rules.map((rule: any) => this.cleanRuleFromJson(rule))
           };
+          // CRITICAL: For switch nodes, branches are indexed by rule position
+          // The outputKey/renameOutput is the label, and the index is the value
           branches = switchRules.rules.map((rule: any, idx: number) => ({
             label: rule.outputKey || rule.renameOutput || `Branch ${idx + 1}`,
-            value: String(idx)
+            value: String(idx) // This matches the outputIndex in n8n connections
           }));
         } else if (ifConditions && ifConditions.conditions && Array.isArray(ifConditions.conditions)) {
           // If node with conditions object
@@ -1733,54 +1735,104 @@ export class NodeMapper {
           conditions: []
         };
         
-        // Transform n8n conditions to Lamatic format
-        let lamaticCondition: any = {};
-        if (finalConditions && finalConditions.conditions && Array.isArray(finalConditions.conditions)) {
-          const combinator = finalConditions.combinator || 'and';
-          const operands = finalConditions.conditions.map((cond: any) => {
-            // Transform n8n condition to Lamatic operand format
-            // n8n operator can be: { type: "string", operation: "notContains" } or just a string
-            let n8nOperator: string = 'equals';
-            if (cond.operator) {
-              if (typeof cond.operator === 'string') {
-                n8nOperator = cond.operator;
-              } else if (typeof cond.operator === 'object') {
-                n8nOperator = cond.operator.operation || cond.operator.type || 'equals';
-              }
+        // CRITICAL: Handle switch nodes differently from if nodes
+        // Switch nodes have multiple rules, each with its own conditions
+        // If nodes have a single condition set with True/False branches
+        if (switchRules && switchRules.rules && Array.isArray(switchRules.rules)) {
+          // Switch node: each rule becomes a condition entry
+          for (let i = 0; i < switchRules.rules.length; i++) {
+            const rule = switchRules.rules[i];
+            const branch = branches[i];
+            if (!branch) continue;
+            
+            // Transform rule conditions to Lamatic format
+            let lamaticCondition: any = {};
+            if (rule.conditions && rule.conditions.conditions && Array.isArray(rule.conditions.conditions)) {
+              const combinator = rule.conditions.combinator || 'and';
+              const operands = rule.conditions.conditions.map((cond: any) => {
+                let n8nOperator: string = 'equals';
+                if (cond.operator) {
+                  if (typeof cond.operator === 'string') {
+                    n8nOperator = cond.operator;
+                  } else if (typeof cond.operator === 'object') {
+                    n8nOperator = cond.operator.operation || cond.operator.type || 'equals';
+                  }
+                }
+                
+                const operator = this.mapN8nOperatorToLamatic(n8nOperator);
+                const leftValue = cond.leftValue || '';
+                let value = cond.rightValue !== undefined ? String(cond.rightValue) : '';
+                if (n8nOperator === 'notEmpty' || n8nOperator === 'empty') {
+                  value = '';
+                }
+                
+                return {
+                  name: leftValue,
+                  operator: operator,
+                  value: value
+                };
+              });
+              
+              lamaticCondition = {
+                operator: null,
+                operands: operands,
+                combinator: combinator
+              };
             }
             
-            const operator = this.mapN8nOperatorToLamatic(n8nOperator);
-            const leftValue = cond.leftValue || '';
-            
-            // For notEmpty/empty operations, set appropriate value
-            let value = cond.rightValue !== undefined ? String(cond.rightValue) : '';
-            if (n8nOperator === 'notEmpty' || n8nOperator === 'empty') {
-              value = '';
-            }
-            
-            return {
-              name: leftValue,
-              operator: operator,
-              value: value
+            const conditionEntry: any = {
+              label: branch.label,
+              value: `${baseNode.nodeId}-${branch.label.toLowerCase()}`,
+              condition: lamaticCondition
             };
-          });
+            conditionValues.conditions.push(conditionEntry);
+          }
+        } else {
+          // If node: single condition set with True/False branches
+          let lamaticCondition: any = {};
+          if (finalConditions && finalConditions.conditions && Array.isArray(finalConditions.conditions)) {
+            const combinator = finalConditions.combinator || 'and';
+            const operands = finalConditions.conditions.map((cond: any) => {
+              let n8nOperator: string = 'equals';
+              if (cond.operator) {
+                if (typeof cond.operator === 'string') {
+                  n8nOperator = cond.operator;
+                } else if (typeof cond.operator === 'object') {
+                  n8nOperator = cond.operator.operation || cond.operator.type || 'equals';
+                }
+              }
+              
+              const operator = this.mapN8nOperatorToLamatic(n8nOperator);
+              const leftValue = cond.leftValue || '';
+              let value = cond.rightValue !== undefined ? String(cond.rightValue) : '';
+              if (n8nOperator === 'notEmpty' || n8nOperator === 'empty') {
+                value = '';
+              }
+              
+              return {
+                name: leftValue,
+                operator: operator,
+                value: value
+              };
+            });
+            
+            lamaticCondition = {
+              operator: null,
+              operands: operands,
+              combinator: combinator
+            };
+          }
           
-          lamaticCondition = {
-            operator: null, // Top-level operator (null means use combinator)
-            operands: operands,
-            combinator: combinator
-          };
-        }
-        
-        // Build conditions array with proper structure
-        for (let i = 0; i < branches.length; i++) {
-          const branch = branches[i];
-          const conditionEntry: any = {
-            label: branch.label,
-            value: `${baseNode.nodeId}-${branch.label.toLowerCase()}`,
-            condition: i === 0 ? lamaticCondition : {} // First branch (True) has conditions, False is empty
-          };
-          conditionValues.conditions.push(conditionEntry);
+          // Build conditions array with proper structure for if nodes
+          for (let i = 0; i < branches.length; i++) {
+            const branch = branches[i];
+            const conditionEntry: any = {
+              label: branch.label,
+              value: `${baseNode.nodeId}-${branch.label.toLowerCase()}`,
+              condition: i === 0 ? lamaticCondition : {} // First branch (True) has conditions, False is empty
+            };
+            conditionValues.conditions.push(conditionEntry);
+          }
         }
         
         return {
