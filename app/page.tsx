@@ -39,7 +39,7 @@ const generateMarkdownReport = (result: any, originalFileName?: string): string 
   markdown += `| **❌ Errors** | ${result.errorNodes || 0} |\n\n`;
   markdown += `---\n\n`;
   
-  // What's Next
+  // What's Next - Simplified
   markdown += `## 🚀 What's Next?\n\n`;
   markdown += `Follow these steps to complete your workflow migration:\n\n`;
   
@@ -50,10 +50,16 @@ const generateMarkdownReport = (result: any, originalFileName?: string): string 
   markdown += `**Copy-Paste Method (Easiest):**\n`;
   markdown += `1. Open your downloaded file in any text editor\n`;
   markdown += `2. Select all content (Ctrl+A or Cmd+A) and copy\n`;
-  markdown += `3. In Lamatic Studio, click the **"Config"** toggle (top-right)\n`;
+  markdown += `3. In Lamatic Studio, open a flow or create a new one, then click the **"Config"** toggle (top-right)\n`;
   markdown += `4. Paste the JSON content into the editor\n`;
-  markdown += `5. Click **"Save"** button\n`;
+  markdown += `5. Put in your API keys and credentials\n`;
   markdown += `6. Done! Your workflow is now imported ✅\n\n`;
+  
+  markdown += `---\n\n`;
+  
+  // Complete Setup Guide (for detailed report)
+  markdown += `## 📋 Complete Setup Guide\n\n`;
+  markdown += `For detailed setup instructions including testing and deployment, see the sections below.\n\n`;
   
   // Credentials if needed
   if (result.warningNodes > 0) {
@@ -184,18 +190,37 @@ const generateMarkdownReport = (result: any, originalFileName?: string): string 
     });
   }
   
-  // Node Conversion Details
+  // Node Conversion Details - Table Format for Notion
   markdown += `## 📋 Node Conversion Details\n\n`;
-  result.nodeResults?.forEach((node: any, i: number) => {
-    const statusEmoji = node.status === 'success' ? '✅' : node.status === 'warning' ? '⚠️' : '❌';
-    markdown += `### ${i + 1}. ${statusEmoji} ${node.n8nNodeName}\n\n`;
-    markdown += `- **Status:** ${node.status}\n`;
-    markdown += `- **Type Conversion:** \`${node.n8nNodeType}\` → \`${node.lamaticNodeType}\`\n`;
-    if (node.message) {
-      markdown += `- **Note:** ${node.message}\n`;
-    }
-    markdown += `\n`;
+  markdown += `All your n8n workflow nodes and their conversion status. This table shows what was converted and what needs attention.\n\n`;
+  
+  // Create table header
+  markdown += `| Status | Node Name | n8n Type | → | Lamatic Type | Notes |\n`;
+  markdown += `|--------|-----------|----------|---|--------------|-------|\n`;
+  
+  // Add table rows
+  result.nodeResults?.forEach((node: any) => {
+    const statusEmoji = node.status === 'success' ? '✅ Converted' : node.status === 'warning' ? '⚠️ Needs Setup' : '❌ Error';
+    const nodeName = node.n8nNodeName || 'Unnamed';
+    const n8nType = node.n8nNodeType || 'Unknown';
+    const lamaticType = node.lamaticNodeType || 'Unknown';
+    
+    // Escape pipe characters and newlines in content to prevent breaking table
+    const escapedNodeName = (nodeName || '').replace(/\|/g, '\\|').replace(/\n/g, ' ').trim();
+    const escapedN8nType = (n8nType || '').replace(/\|/g, '\\|').replace(/\n/g, ' ').trim();
+    const escapedLamaticType = (lamaticType || '').replace(/\|/g, '\\|').replace(/\n/g, ' ').trim();
+    const notes = node.message ? (node.message || '').replace(/\|/g, '\\|').replace(/\n/g, ' ').trim() : '—';
+    
+    markdown += `| ${statusEmoji} | ${escapedNodeName} | \`${escapedN8nType}\` | → | \`${escapedLamaticType}\` | ${notes} |\n`;
   });
+  
+  markdown += `\n`;
+  
+  // Add legend for non-tech users
+  markdown += `### Status Legend\n\n`;
+  markdown += `- **✅ Converted:** Node is ready to use\n`;
+  markdown += `- **⚠️ Needs Setup:** Requires configuration (like adding API keys)\n`;
+  markdown += `- **❌ Error:** Needs manual review\n\n`;
   
   markdown += `---\n\n`;
   
@@ -635,7 +660,7 @@ const generatePDF = async (result: any, originalFileName?: string, reportElement
     pdf.text('Navigate to studio.lamatic.ai in your browser', margin, yPos);
     yPos += 8;
 
-    // Step 2
+    // Step 2 - Simplified
     pdf.setFont('helvetica', 'bold');
     pdf.text('Step 2: Import Your Workflow', margin, yPos);
     yPos += 5;
@@ -646,13 +671,27 @@ const generatePDF = async (result: any, originalFileName?: string, reportElement
     yPos += 4;
     pdf.text('2. Select all content (Ctrl+A or Cmd+A) and copy', margin, yPos);
     yPos += 4;
-    pdf.text('3. In Lamatic Studio, click the "Config" toggle (top-right)', margin, yPos);
+    pdf.text('3. In Lamatic Studio, open a flow or create a new one, then click the "Config" toggle (top-right)', margin, yPos);
     yPos += 4;
     pdf.text('4. Paste the JSON content into the editor', margin, yPos);
     yPos += 4;
-    pdf.text('5. Click "Save" button', margin, yPos);
+    pdf.text('5. Put in your API keys and credentials', margin, yPos);
     yPos += 4;
     pdf.text('6. Done! Your workflow is now imported', margin, yPos);
+    yPos += 10;
+
+    // Complete Setup Guide Section
+    checkPageBreak(20);
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+    pdf.text('Complete Setup Guide', margin, yPos);
+    yPos += 7;
+
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+    pdf.text('For detailed setup instructions including testing and deployment, see below.', margin, yPos);
     yPos += 8;
 
     // Step 3 - Credentials (if needed)
@@ -1409,178 +1448,72 @@ export default function MigrationTool() {
                </div>
              </div>
 
-            {/* FIX #1: Post-Migration Steps - Clear Next Actions */}
-            <div className="space-y-4 pb-6 border-b border-border">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-                  <span className="text-xl">✅</span>
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold">What's Next?</h2>
-                  <p className="text-sm text-muted-foreground">Follow these steps to complete your workflow migration</p>
-                </div>
+            {/* Minimalistic Step-by-Step Instructions */}
+            <div className="border border-border rounded-lg p-6 bg-card">
+              <div className="mb-5">
+                <h2 className="text-lg font-semibold mb-1">Next Steps</h2>
+                <p className="text-sm text-muted-foreground">Follow these instructions to import your workflow into Lamatic</p>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-6">
                 {/* Step 1 */}
-                <div className="flex items-start gap-4 p-5 rounded-xl bg-card border-2 border-border hover:border-primary/30 transition-all group">
-                  <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-lg">
-                    1
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-base mb-2 flex items-center gap-2">
-                      Open Lamatic Studio
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText('https://studio.lamatic.ai');
-                          alert('URL copied to clipboard!');
-                        }}
-                        className="ml-auto text-xs px-2 py-1 bg-muted rounded hover:bg-primary/10 transition-colors"
-                      >
-                        📋 Copy URL
-                      </button>
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Navigate to <a href="https://studio.lamatic.ai" target="_blank" rel="noopener noreferrer" className="text-primary font-semibold hover:underline">studio.lamatic.ai</a> in your browser
-                    </p>
+                <div className="flex items-start gap-3">
+                  <span className="text-muted-foreground font-medium text-sm">1.</span>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-sm mb-1.5">Go to Lamatic Studio</h3>
+                    <a 
+                      href="https://studio.lamatic.ai" 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-sm text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      studio.lamatic.ai
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
                   </div>
                 </div>
 
                 {/* Step 2 */}
-                <div className="flex items-start gap-4 p-5 rounded-xl bg-card border-2 border-border hover:border-primary/30 transition-all">
-                  <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-lg">
-                    2
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-base mb-2 flex items-center gap-2">
-                      Import Your Workflow
-                      <button
-                        onClick={() => {
-                          const workflowName = result.lamaticWorkflow?.name || 'workflow';
-                          navigator.clipboard.writeText(workflowName);
-                          alert('Workflow name copied!');
-                        }}
-                        className="ml-auto text-xs px-2 py-1 bg-muted rounded hover:bg-primary/10 transition-colors"
-                      >
-                        📋 Copy Name
-                      </button>
-                    </h3>
-                    <div className="text-sm text-muted-foreground space-y-2">
-                      <p className="font-semibold text-foreground">📋 Copy-Paste Method (Easiest):</p>
-                      <div className="pl-3 space-y-1">
-                        <p>1. Open your downloaded file in any text editor</p>
-                        <p>2. Select all content (<code className="bg-muted px-1.5 py-0.5 rounded text-xs">Ctrl+A</code> or <code className="bg-muted px-1.5 py-0.5 rounded text-xs">Cmd+A</code>) and copy</p>
-                        <p>3. In Lamatic Studio, click the <strong className="text-foreground">"Config"</strong> toggle (top-right)</p>
-                        <p>4. Paste the JSON content into the editor</p>
-                        <p>5. Click <strong className="text-foreground">"Save"</strong> button</p>
-                        <p>6. Done! Your workflow is now imported ✅</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 3 - Conditional based on warnings */}
-                {result.warningNodes > 0 && (
-                  <div className="flex items-start gap-4 p-5 rounded-xl border-2 border-yellow-500/30 bg-yellow-500/5 hover:border-yellow-500/50 transition-all">
-                    <div className="shrink-0 w-10 h-10 rounded-xl bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center font-bold text-yellow-600 dark:text-yellow-400 text-lg">
-                      3
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-base mb-2 text-yellow-700 dark:text-yellow-400">
-                        ⛔ MUST FIX: Configure Credentials
-                      </h3>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        Your workflow requires authentication setup. <strong>It won't run until these are configured.</strong>
-                      </p>
-                      <div className="text-sm text-muted-foreground space-y-1">
-                        <p>1. Open your imported workflow in Lamatic</p>
-                        <p>2. Click on each node that needs credentials (marked with ⚠️)</p>
-                        <p>3. Click <strong className="text-foreground">Configure Credentials</strong></p>
-                        <p>4. Follow the setup instructions (see Detailed Report for specifics)</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Step 4 */}
-                <div className="flex items-start gap-4 p-5 rounded-xl bg-card border-2 border-border hover:border-primary/30 transition-all">
-                  <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-lg">
-                    {result.warningNodes > 0 ? '4' : '3'}
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-base mb-2">🧪 Test Your Workflow</h3>
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <p>1. In Lamatic, click <strong className="text-foreground">Test Run</strong> button</p>
-                      <p>2. Provide sample input data for testing</p>
-                      <p>3. Verify each node executes correctly</p>
-                      <p>4. Check that output matches your expectations</p>
-                      <p>5. Review execution logs for any issues</p>
-                    </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-muted-foreground font-medium text-sm">2.</span>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-sm mb-3">Import your workflow</h3>
+                    <ul className="space-y-2.5 text-sm text-muted-foreground">
+                      <li className="flex items-start gap-2.5">
+                        <span className="text-muted-foreground mt-0.5">→</span>
+                        <span>Open the downloaded JSON file in any text editor</span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="text-muted-foreground mt-0.5">→</span>
+                        <span>Select all content (<code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">Ctrl+A</code> or <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">Cmd+A</code>) and copy it</span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="text-muted-foreground mt-0.5">→</span>
+                        <span>In Lamatic Studio, open an existing <strong className="text-foreground">flow</strong> or create a new one</span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="text-muted-foreground mt-0.5">→</span>
+                        <span>Click the <strong className="text-foreground">"Config"</strong> toggle button in the top-right corner</span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="text-muted-foreground mt-0.5">→</span>
+                        <span>Paste the JSON content into the editor</span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="text-muted-foreground mt-0.5">→</span>
+                        <span>Add your API keys and credentials where needed</span>
+                      </li>
+                      <li className="flex items-start gap-2.5 pt-1">
+                        <span className="text-muted-foreground mt-0.5">✓</span>
+                        <span className="text-foreground">Your workflow is now imported and ready to use</span>
+                      </li>
+                    </ul>
                   </div>
                 </div>
-
-                {/* Step 5 */}
-                <div className="flex items-start gap-4 p-5 rounded-xl border-2 border-green-500/30 bg-green-500/5 hover:border-green-500/50 transition-all">
-                  <div className="shrink-0 w-10 h-10 rounded-xl bg-green-500/20 border border-green-500/30 flex items-center justify-center font-bold text-green-600 dark:text-green-400 text-lg">
-                    {result.warningNodes > 0 ? '5' : '4'}
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-base mb-2 text-green-700 dark:text-green-400">🚀 Deploy & Go Live</h3>
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <p>1. Activate your workflow in Lamatic</p>
-                      <p>2. Update webhook URLs in your external services (if applicable)</p>
-                      <p>3. Monitor initial executions closely</p>
-                      <p>4. Keep your original n8n workflow as backup</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Processing Time Info */}
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-4 p-3 bg-muted/30 rounded-lg">
-                <Clock className="w-4 h-4" />
-                <span>Estimated setup time: {result.warningNodes > 0 ? '10-15 minutes' : '5-8 minutes'} (including credential configuration)</span>
               </div>
             </div>
-
-            {/* Quick Node List - Expandable */}
-            <details className="group/details">
-              <summary className="cursor-pointer list-none p-3 border-2 border-border rounded-xl hover:border-primary/30 hover:bg-primary/5 transition-all">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">View all {result.nodeResults?.length} migrated nodes</span>
-                  <ArrowRight className="w-4 h-4 text-muted-foreground group-open/details:rotate-90 transition-transform" />
-                </div>
-              </summary>
-              <div className="mt-3 space-y-2 modal-scroll max-h-96 overflow-y-auto">
-                {result.nodeResults?.map((node: any, i: number) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 px-4 py-3 border border-border rounded-lg bg-card transition-all"
-                  >
-                    <div className="shrink-0">
-                      {node.status === 'success' && (
-                        <div className="w-6 h-6 rounded-md bg-green-500/15 flex items-center justify-center">
-                          <Check className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
-                        </div>
-                      )}
-                      {node.status === 'warning' && (
-                        <div className="w-6 h-6 rounded-md bg-yellow-500/15 flex items-center justify-center">
-                          <AlertCircle className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" />
-                        </div>
-                      )}
-                      {node.status === 'error' && (
-                        <div className="w-6 h-6 rounded-md bg-red-500/15 flex items-center justify-center">
-                          <XCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{node.n8nNodeName}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </details>
           </div>
         )}
 
@@ -1916,15 +1849,17 @@ export default function MigrationTool() {
 
                   <div className="mt-4 p-4 bg-muted/50 rounded-lg border-l-4 border-primary">
                     <p className="text-sm leading-relaxed mb-3">
-                      <strong className="text-base">What this means:</strong> {result.convertedNodes} out of {result.totalNodes} automation nodes from your n8n workflow 
-                      have been successfully converted to Lamatic format. Your workflow logic and automation flows 
-                      are ready to use in Lamatic.
+                      <strong className="text-base">In Simple Terms:</strong> Your workflow has been converted! 
+                      <strong className="text-foreground"> {result.convertedNodes} out of {result.totalNodes}</strong> automation steps 
+                      from your n8n workflow are now ready to use in Lamatic. You can import and use your workflow right away.
                     </p>
                     {(result.warningNodes > 0 || result.errorNodes > 0) && (
                       <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                         <p className="text-sm leading-relaxed">
-                          <strong className="text-yellow-600 dark:text-yellow-400">⚠️ Manual Review Needed:</strong> Some connections may be broken due to {result.warningNodes > 0 ? `${result.warningNodes} nodes requiring setup` : ''}{result.warningNodes > 0 && result.errorNodes > 0 ? ' and ' : ''}{result.errorNodes > 0 ? `${result.errorNodes} errors` : ''}. 
-                          Please review and test your workflow connections in Lamatic Studio before deploying to production.
+                          <strong className="text-yellow-600 dark:text-yellow-400">⚠️ Action Required:</strong> 
+                          {result.warningNodes > 0 && ` ${result.warningNodes} node${result.warningNodes > 1 ? 's need' : ' needs'} setup (like adding API keys).`}
+                          {result.errorNodes > 0 && ` ${result.errorNodes} node${result.errorNodes > 1 ? 's have' : ' has'} errors that need manual review.`}
+                          {' '}Check the table below to see which ones need attention, then test your workflow in Lamatic Studio before going live.
                         </p>
                       </div>
                     )}
@@ -1933,10 +1868,13 @@ export default function MigrationTool() {
 
                 {/* Statistics Grid - Simplified */}
                 <div>
-                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
                     <Activity className="w-6 h-6 text-primary" />
                     Migration Statistics
                   </h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Quick overview of your workflow conversion results
+                  </p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-5 rounded-xl bg-muted/40 border-2 border-border">
                       <div className="text-3xl font-bold mb-1">{result.totalNodes}</div>
@@ -2129,58 +2067,187 @@ export default function MigrationTool() {
                   return null;
                 })()}
 
-                {/* Detailed Node Conversion List */}
+                {/* Node Conversion Table - Easy to Read */}
                 <div>
-                  <h3 className="text-lg font-semibold mb-4">Node Conversion Details</h3>
-                  <div className="space-y-3">
-                    {result.nodeResults?.map((node: any, i: number) => (
-                      <div key={i} className="p-4 rounded-xl bg-card border border-border hover:border-primary/30 transition-all">
-                        <div className="flex items-start gap-3">
-                          {/* Status Icon */}
-                          <div className="shrink-0 mt-0.5">
-                            {node.status === 'success' && (
-                              <div className="w-8 h-8 rounded-lg bg-green-500/15 border border-green-500/30 flex items-center justify-center">
-                                <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
-                              </div>
-                            )}
-                            {node.status === 'warning' && (
-                              <div className="w-8 h-8 rounded-lg bg-yellow-500/15 border border-yellow-500/30 flex items-center justify-center">
-                                <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
-                              </div>
-                            )}
-                            {node.status === 'error' && (
-                              <div className="w-8 h-8 rounded-lg bg-red-500/15 border border-red-500/30 flex items-center justify-center">
-                                <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                              </div>
-                            )}
+                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                    <Database className="w-6 h-6 text-primary" />
+                    Node Conversion Details
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    All your n8n workflow nodes and their conversion status. This table shows what was converted and what needs attention.
+                  </p>
+                  
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-muted/50 border-b border-border">
+                          <tr>
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-foreground">Status</th>
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-foreground">Node Name</th>
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-foreground">n8n Type</th>
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-foreground">→</th>
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-foreground">Lamatic Type</th>
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-foreground">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {result.nodeResults?.map((node: any, i: number) => (
+                            <tr key={i} className="hover:bg-muted/20 transition-colors">
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  {node.status === 'success' && (
+                                    <div className="w-6 h-6 rounded-md bg-green-500/15 border border-green-500/30 flex items-center justify-center">
+                                      <Check className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                                    </div>
+                                  )}
+                                  {node.status === 'warning' && (
+                                    <div className="w-6 h-6 rounded-md bg-yellow-500/15 border border-yellow-500/30 flex items-center justify-center">
+                                      <AlertCircle className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" />
+                                    </div>
+                                  )}
+                                  {node.status === 'error' && (
+                                    <div className="w-6 h-6 rounded-md bg-red-500/15 border border-red-500/30 flex items-center justify-center">
+                                      <XCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+                                    </div>
+                                  )}
+                                  <span className={`text-xs font-medium ${
+                                    node.status === 'success' ? 'text-green-600 dark:text-green-400' :
+                                    node.status === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
+                                    'text-red-600 dark:text-red-400'
+                                  }`}>
+                                    {node.status === 'success' ? 'Converted' : node.status === 'warning' ? 'Needs Setup' : 'Error'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="font-medium text-sm text-foreground">{node.n8nNodeName}</div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <code className="text-xs bg-muted px-2 py-1 rounded font-mono text-muted-foreground">
+                                  {node.n8nNodeType}
+                                </code>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <ArrowRight className="w-4 h-4 text-muted-foreground mx-auto" />
+                              </td>
+                              <td className="py-3 px-4">
+                                <code className="text-xs bg-muted px-2 py-1 rounded font-mono text-muted-foreground">
+                                  {node.lamaticNodeType}
+                                </code>
+                              </td>
+                              <td className="py-3 px-4">
+                                {node.message ? (
+                                  <div className="text-xs text-muted-foreground max-w-xs">
+                                    {node.message}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  
+                  {/* Legend for non-tech users */}
+                  <div className="mt-4 p-4 rounded-lg bg-muted/30 border border-border">
+                    <p className="text-xs font-semibold text-foreground mb-2">What do the statuses mean?</p>
+                    <div className="grid md:grid-cols-3 gap-3 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+                        <span><strong className="text-foreground">Converted:</strong> Node is ready to use</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
+                        <span><strong className="text-foreground">Needs Setup:</strong> Requires configuration</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                        <span><strong className="text-foreground">Error:</strong> Needs manual review</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Complete Setup Guide - Detailed Steps */}
+                <div>
+                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                    <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Complete Setup Guide
+                  </h3>
+
+                  <div className="space-y-4">
+                    {/* Step 3 - Configure Credentials (if needed) */}
+                    {result.warningNodes > 0 && (
+                      <div className="p-5 rounded-xl border-2 border-yellow-500/30 bg-yellow-500/5">
+                        <div className="flex items-start gap-4">
+                          <div className="shrink-0 w-10 h-10 rounded-xl bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center font-bold text-yellow-600 dark:text-yellow-400 text-lg">
+                            3
                           </div>
-                          
-                          {/* Node Details */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <div className="font-semibold text-base">{node.n8nNodeName}</div>
-                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                node.status === 'success' ? 'bg-green-500/20 text-green-700 dark:text-green-400' :
-                                node.status === 'warning' ? 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400' :
-                                'bg-red-500/20 text-red-700 dark:text-red-400'
-                              }`}>
-                                {node.status}
-                              </span>
+                          <div className="flex-1">
+                            <h4 className="font-bold text-base mb-2 text-yellow-700 dark:text-yellow-400">
+                              ⛔ MUST FIX: Configure Credentials
+                            </h4>
+                            <p className="text-sm text-muted-foreground mb-3">
+                              Your workflow requires authentication setup. <strong>It won't run until these are configured.</strong>
+                            </p>
+                            <div className="text-sm text-muted-foreground space-y-1">
+                              <p>1. Open your imported workflow in Lamatic</p>
+                              <p>2. Click on each node that needs credentials (marked with ⚠️)</p>
+                              <p>3. Click <strong className="text-foreground">Configure Credentials</strong></p>
+                              <p>4. Follow the setup instructions (see Credentials Required section above for specifics)</p>
                             </div>
-                            <div className="text-sm text-muted-foreground mb-2">
-                              <span className="font-mono text-xs">{node.n8nNodeType}</span>
-                              <ArrowRight className="w-3 h-3 inline mx-1" />
-                              <span className="font-mono text-xs">{node.lamaticNodeType}</span>
-                            </div>
-                            {node.message && (
-                              <div className="text-sm text-muted-foreground mt-2 p-2 rounded bg-muted/50">
-                                {node.message}
-                              </div>
-                            )}
                           </div>
                         </div>
                       </div>
-                    ))}
+                    )}
+
+                    {/* Step 4 - Test Your Workflow */}
+                    <div className="p-5 rounded-xl bg-card border-2 border-border">
+                      <div className="flex items-start gap-4">
+                        <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-lg">
+                          {result.warningNodes > 0 ? '4' : '3'}
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-bold text-base mb-2">🧪 Test Your Workflow</h4>
+                          <div className="text-sm text-muted-foreground space-y-1">
+                            <p>1. In Lamatic, click <strong className="text-foreground">Test Run</strong> button</p>
+                            <p>2. Provide sample input data for testing</p>
+                            <p>3. Verify each node executes correctly</p>
+                            <p>4. Check that output matches your expectations</p>
+                            <p>5. Review execution logs for any issues</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step 5 - Deploy & Go Live */}
+                    <div className="p-5 rounded-xl border-2 border-green-500/30 bg-green-500/5">
+                      <div className="flex items-start gap-4">
+                        <div className="shrink-0 w-10 h-10 rounded-xl bg-green-500/20 border border-green-500/30 flex items-center justify-center font-bold text-green-600 dark:text-green-400 text-lg">
+                          {result.warningNodes > 0 ? '5' : '4'}
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-bold text-base mb-2 text-green-700 dark:text-green-400">🚀 Deploy & Go Live</h4>
+                          <div className="text-sm text-muted-foreground space-y-1">
+                            <p>1. Activate your workflow in Lamatic</p>
+                            <p>2. Update webhook URLs in your external services (if applicable)</p>
+                            <p>3. Monitor initial executions closely</p>
+                            <p>4. Keep your original n8n workflow as backup</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Time Estimate */}
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg">
+                      <Clock className="w-4 h-4" />
+                      <span>Estimated setup time: {result.warningNodes > 0 ? '10-15 minutes' : '5-8 minutes'} (including credential configuration)</span>
+                    </div>
                   </div>
                 </div>
 
@@ -2226,11 +2293,12 @@ export default function MigrationTool() {
                           </div>
                         )}
                         
-                        {/* Recommended warnings */}
+                        {/* Recommended warnings - Exclude technical connection warnings */}
                         {result.warnings.filter((w: string) => 
-                          w.toLowerCase().includes('recommend') || 
-                          w.toLowerCase().includes('consider') ||
-                          w.toLowerCase().includes('should')
+                          !w.toLowerCase().includes('missing connection') &&
+                          (w.toLowerCase().includes('recommend') || 
+                           w.toLowerCase().includes('consider') ||
+                           (w.toLowerCase().includes('should') && !w.toLowerCase().includes('should connect to')))
                         ).length > 0 && (
                           <div className="p-5 rounded-xl bg-yellow-500/10 border-2 border-yellow-500/30">
                             <div className="flex items-start gap-3">
@@ -2242,9 +2310,10 @@ export default function MigrationTool() {
                                 <div className="space-y-1">
                                   {result.warnings
                                     .filter((w: string) => 
-                                      w.toLowerCase().includes('recommend') || 
-                                      w.toLowerCase().includes('consider') ||
-                                      w.toLowerCase().includes('should')
+                                      !w.toLowerCase().includes('missing connection') &&
+                                      (w.toLowerCase().includes('recommend') || 
+                                       w.toLowerCase().includes('consider') ||
+                                       (w.toLowerCase().includes('should') && !w.toLowerCase().includes('should connect to')))
                                     )
                                     .map((warning: string, i: number) => (
                                       <p key={i} className="text-sm leading-relaxed">• {warning}</p>
@@ -2255,8 +2324,9 @@ export default function MigrationTool() {
                           </div>
                         )}
                         
-                        {/* Info/Tips */}
+                        {/* Info/Tips - Exclude technical connection warnings */}
                         {result.warnings.filter((w: string) => 
+                          !w.toLowerCase().includes('missing connection') &&
                           !w.toLowerCase().includes('credential') && 
                           !w.toLowerCase().includes('auth') &&
                           !w.toLowerCase().includes('required') &&
@@ -2274,6 +2344,7 @@ export default function MigrationTool() {
                                 <div className="space-y-1">
                                   {result.warnings
                                     .filter((w: string) => 
+                                      !w.toLowerCase().includes('missing connection') &&
                                       !w.toLowerCase().includes('credential') && 
                                       !w.toLowerCase().includes('auth') &&
                                       !w.toLowerCase().includes('required') &&
