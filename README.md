@@ -1,6 +1,6 @@
-# n8n to Lamatic Migration Tool
+# N8N to Lamatic Serverless Migration Tool
 
-A production-ready migration tool that converts n8n workflows to Lamatic format with intelligent node mapping, dependency analysis, and seamless user experience.
+A production-ready migration tool that converts N8N workflows to Lamatic format with intelligent node mapping, dependency analysis, and seamless user experience.
 
 ## 🚀 Features
 
