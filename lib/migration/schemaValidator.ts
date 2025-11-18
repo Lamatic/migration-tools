@@ -1,4 +1,14 @@
-// Lightweight schema validator for Lamatic nodes (warn-by-default)
+/**
+ * Validates a Lamatic node against its schema definition.
+ * 
+ * Performs shallow validation of required fields and type checking.
+ * By default, validation failures generate warnings (not errors) unless
+ * LAMATIC_SCHEMA_STRICT=true is set.
+ * 
+ * @param node - Lamatic node to validate
+ * @param schema - Schema definition object with type, properties, required fields
+ * @returns Validation result with valid flag and array of error messages
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function validateAgainstSchema(node: any, schema: any): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
@@ -53,6 +63,14 @@ export function validateAgainstSchema(node: any, schema: any): { valid: boolean;
   return { valid: errors.length === 0, errors };
 }
 
+/**
+ * Checks if strict schema validation mode is enabled.
+ * 
+ * When strict mode is enabled, schema validation failures cause nodes to be
+ * converted to placeholder nodes instead of proceeding with warnings.
+ * 
+ * @returns true if LAMATIC_SCHEMA_STRICT environment variable is set to 'true'
+ */
 export function isStrictMode(): boolean {
   return String(process.env.LAMATIC_SCHEMA_STRICT || '').toLowerCase() === 'true';
 }

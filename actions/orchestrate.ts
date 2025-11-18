@@ -14,18 +14,30 @@ import {
 } from '../lib/migration/types';
 
 /**
- * Main migration pipeline for converting n8n workflows to Lamatic
- * Orchestrates the entire migration process from file upload to final output
+ * Main migration pipeline for converting n8n workflows to Lamatic format.
+ * 
+ * Orchestrates the complete migration process through four stages:
+ * 1. Parse: Extract and validate n8n workflow structure
+ * 2. Map: Convert n8n nodes to Lamatic node types
+ * 3. Dependencies: Build execution order and connections
+ * 4. Generate: Create final Lamatic workflow JSON
  */
 
-// Initialize components
+// Initialize migration components (singleton instances)
 const parser = new N8nParser();
 const mapper = new NodeMapper();
 const dependencyBuilder = new DependencyBuilder();
 const generator = new LamaticOutputGenerator();
 
 /**
- * Main processing method that orchestrates the entire migration
+ * Main migration orchestration function.
+ * 
+ * Processes n8n workflow files or JSON strings through the complete migration pipeline.
+ * Handles error recovery, placeholder node filtering, and generates comprehensive migration reports.
+ * 
+ * @param file - File object or JSON string containing n8n workflow
+ * @returns MigrationResult with success status, converted workflow, statistics, and logs
+ * @throws Error if migration fails at any stage
  */
 export async function processMigration(file: File | string): Promise<MigrationResult> {
   const startTime = Date.now();
@@ -34,38 +46,40 @@ export async function processMigration(file: File | string): Promise<MigrationRe
   const warnings: string[] = [];
 
   try {
-    // Handle both File objects and string content
+    // Extract content from File object or use string directly
     let fileContent: string;
     let fileName: string;
     
     if (typeof file === 'string') {
+      // Direct JSON string input (pasted content)
       fileContent = file;
       fileName = 'workflow.json';
       migrationLog.push(`Starting migration of workflow content`);
       migrationLog.push(`Content size: ${(fileContent.length / 1024).toFixed(2)} KB`);
     } else {
+      // File upload - read text content
       fileContent = await file.text();
       fileName = file.name;
       migrationLog.push(`Starting migration of file: ${fileName}`);
       migrationLog.push(`File size: ${(file.size / 1024).toFixed(2)} KB`);
     }
 
-    // Step 1: Parse n8n workflow
+    // Stage 1: Parse n8n workflow JSON into normalized structure
     migrationLog.push('Step 1: Parsing n8n workflow...');
     const n8nWorkflow = await parser.parseWorkflow(fileContent);
     migrationLog.push(`Parsed workflow: ${n8nWorkflow.name} with ${n8nWorkflow.nodes.length} nodes`);
 
-    // Step 2: Map nodes to Lamatic equivalents
+    // Stage 2: Map each n8n node to its Lamatic equivalent
     migrationLog.push('Step 2: Mapping nodes to Lamatic equivalents...');
     const mappingResults = await mapNodes(n8nWorkflow);
     migrationLog.push(`Mapped ${mappingResults.length} nodes`);
 
-    // Step 3: Build dependencies
+    // Stage 3: Build dependency structure and connections
     migrationLog.push('Step 3: Building dependency structure...');
     
-    // IMPORTANT: Build connections with ALL nodes first (including placeholders)
-    // This ensures connections are preserved even if target/source is a placeholder
-    // We'll filter placeholders after building connections
+    // CRITICAL: Build connections with ALL nodes (including placeholders) first.
+    // This preserves connection structure even when source/target nodes are unmapped.
+    // Placeholders are filtered out after connections are established.
     const allLamaticNodes = mappingResults.map(r => r.lamaticNode);
     
     const dependencyResults = dependencyBuilder.buildDependencies(
@@ -73,23 +87,25 @@ export async function processMigration(file: File | string): Promise<MigrationRe
       allLamaticNodes
     );
     
-    // Now filter out placeholder nodes from the final result
+    // Filter out placeholder nodes (unmapped node types) from final workflow
+    // Placeholders are created for unsupported nodes but should not appear in output
     const filteredNodesWithDependencies = dependencyResults.nodesWithDependencies.filter(
       node => node.nodeType !== 'placeholderNode'
     );
     
-    // Filter connections to only include non-placeholder nodes
-    const filteredConnections: Record<string, any> = {};
+    // Build set of placeholder node IDs for connection filtering
     const placeholderNodeIds = new Set(
       allLamaticNodes
         .filter(n => n.nodeType === 'placeholderNode')
         .map(n => n.nodeId)
     );
     
+    // Remove placeholder nodes from connections and clean connection references
+    const filteredConnections: Record<string, any> = {};
     for (const [nodeId, connection] of Object.entries(dependencyResults.connections)) {
-      if (placeholderNodeIds.has(nodeId)) continue; // Skip placeholder nodes
+      if (placeholderNodeIds.has(nodeId)) continue; // Skip connections from placeholder nodes
       
-      // Filter out connections to placeholder nodes
+      // Deep filter: remove connections TO placeholder nodes
       const filteredConnection = { ...connection };
       if (filteredConnection.connections) {
         const cleanedConnections: Record<string, any[][]> = {};
@@ -98,6 +114,7 @@ export async function processMigration(file: File | string): Promise<MigrationRe
             const cleanedPort: any[][] = [];
             for (const portConnection of portConnections) {
               if (Array.isArray(portConnection)) {
+                // Filter out connections targeting placeholder nodes
                 const cleanedPortConnection = portConnection.filter((conn: any) => 
                   !placeholderNodeIds.has(conn.nodeId)
                 );
@@ -117,19 +134,30 @@ export async function processMigration(file: File | string): Promise<MigrationRe
       filteredConnections[nodeId] = filteredConnection;
     }
     
-    // Update dependencyResults with filtered data
+    // Update dependency results with filtered nodes and connections
     dependencyResults.nodesWithDependencies = filteredNodesWithDependencies;
     dependencyResults.connections = filteredConnections;
     
-    // CRITICAL: Clean invalid nodeId references from values after filtering placeholders
-    // IMPORTANT: Include trigger node in valid IDs (it's separated later in generator)
+    // Clean invalid nodeId references from node values after placeholder removal
+    // This removes $('nodeId') references pointing to non-existent nodes
+    // CRITICAL: Preserve code fields - they contain formatted code that should not be modified
     const validNodeIds = new Set(filteredNodesWithDependencies.map(n => n.nodeId));
-    // Also ensure we don't validate against nodeIds that don't exist - verify each reference actually exists
-    cleanInvalidNodeReferences(filteredNodesWithDependencies, validNodeIds);
+    for (const node of filteredNodesWithDependencies) {
+      if (node.values && node.values.code !== undefined) {
+        // Save code field before cleaning, restore after
+        const codeValue = node.values.code;
+        cleanInvalidNodeReferences(node, validNodeIds);
+        if (node.values) {
+          node.values.code = codeValue;
+        }
+      } else {
+        cleanInvalidNodeReferences(node, validNodeIds);
+      }
+    }
     
     migrationLog.push(`Built dependencies for ${dependencyResults.nodesWithDependencies.length} nodes`);
 
-    // Step 4: Generate Lamatic workflow
+    // Stage 4: Generate final Lamatic workflow JSON structure
     migrationLog.push('Step 4: Generating Lamatic workflow...');
     let lamaticWorkflow: LamaticWorkflow;
     try {
@@ -154,7 +182,9 @@ export async function processMigration(file: File | string): Promise<MigrationRe
       })));
       // If error is about missing trigger, check if we have any trigger nodes
       if (error instanceof Error && error.message.includes('No trigger node')) {
-        const triggerNodes = dependencyResults.nodesWithDependencies.filter(n => n.nodeType === 'webhookTriggerNode');
+        const triggerNodes = dependencyResults.nodesWithDependencies.filter(n => 
+          n.nodeType === 'webhookTriggerNode' || n.nodeType === 'chatTriggerNode'
+        );
         console.error(`Trigger nodes found: ${triggerNodes.length}`, triggerNodes.map(t => ({ id: t.nodeId, name: t.nodeName, type: t.nodeType })));
       }
       throw error;
@@ -224,7 +254,13 @@ export async function processMigration(file: File | string): Promise<MigrationRe
 }
 
 /**
- * Maps n8n nodes to Lamatic nodes
+ * Maps all n8n nodes in a workflow to their Lamatic equivalents.
+ * 
+ * Processes each node through the NodeMapper, handling errors gracefully
+ * by creating error placeholder nodes for failed mappings.
+ * 
+ * @param n8nWorkflow - Parsed n8n workflow containing nodes to map
+ * @returns Array of mapping results with Lamatic nodes and metadata
  */
 async function mapNodes(n8nWorkflow: N8nWorkflow): Promise<Array<{
   lamaticNode: any;
@@ -248,7 +284,7 @@ async function mapNodes(n8nWorkflow: N8nWorkflow): Promise<Array<{
         n8nNode,
       });
     } catch (error) {
-      // Handle mapping errors
+      // Create error placeholder node for failed mappings
       const errorMessage = error instanceof Error ? error.message : 'Unknown mapping error';
       results.push({
         lamaticNode: createErrorNode(n8nNode, errorMessage),
@@ -264,7 +300,13 @@ async function mapNodes(n8nWorkflow: N8nWorkflow): Promise<Array<{
 }
 
 /**
- * Compiles node results from mapping
+ * Compiles mapping results into standardized NodeMigrationResult format.
+ * 
+ * Transforms internal mapping results into user-facing migration report format
+ * with status, messages, and metadata for each node.
+ * 
+ * @param mappingResults - Raw mapping results from mapNodes function
+ * @returns Array of NodeMigrationResult objects for migration report
  */
 function compileNodeResults(
   mappingResults: Array<{
@@ -300,7 +342,12 @@ function compileNodeResults(
 }
 
 /**
- * Determines the overall status of a node
+ * Determines the migration status for a node based on mapping result.
+ * 
+ * Status hierarchy: error (placeholder) > warning > success
+ * 
+ * @param mappingResult - Node mapping result with lamaticNode and warnings
+ * @returns Status string: 'success', 'warning', 'error', or 'skipped'
  */
 function determineNodeStatus(mappingResult: any): 'success' | 'warning' | 'error' | 'skipped' {
   if (mappingResult.lamaticNode.nodeType === 'placeholderNode') {
@@ -315,7 +362,10 @@ function determineNodeStatus(mappingResult: any): 'success' | 'warning' | 'error
 }
 
 /**
- * Generates a user-friendly message for a node
+ * Generates a human-readable status message for a node migration result.
+ * 
+ * @param mappingResult - Node mapping result with status and warnings
+ * @returns User-friendly status message describing the migration outcome
  */
 function generateNodeMessage(mappingResult: any): string {
   if (mappingResult.lamaticNode.nodeType === 'placeholderNode') {
@@ -330,25 +380,42 @@ function generateNodeMessage(mappingResult: any): string {
 }
 
 /**
- * Cleans invalid nodeId references from node values
- * Removes any $('nodeId') references that point to non-existent nodes
+ * Removes invalid nodeId references from node values.
+ * 
+ * Scans node values for $('nodeId') patterns and removes references to nodes
+ * that no longer exist (e.g., after placeholder filtering).
+ * Preserves code fields which should not be modified.
+ * 
+ * @param node - Lamatic node to clean
+ * @param validNodeIds - Set of valid node IDs that references can point to
  */
 function cleanInvalidNodeReferences(
-  nodes: any[],
+  node: any,
   validNodeIds: Set<string>
 ): void {
-  for (const node of nodes) {
-    if (node.values) {
-      node.values = removeInvalidReferences(node.values, validNodeIds);
+  if (node.values) {
+    // CRITICAL: Preserve code field - save it before cleaning
+    const codeValue = node.values.code;
+    node.values = removeInvalidReferences(node.values, validNodeIds);
+    // Restore code field after cleaning (preserve formatting)
+    if (codeValue !== undefined) {
+      node.values.code = codeValue;
     }
   }
 }
 
 /**
- * Recursively removes invalid $('nodeId') references from values
- * Validates all nodeId references point to existing nodes
- * This is a final cleanup pass after placeholder nodes are filtered
- * CRITICAL: Never treats $json as a node ID - it's a data reference
+ * Recursively removes invalid $('nodeId') references from object values.
+ * 
+ * Traverses objects and arrays, finding $('nodeId') patterns and validating
+ * that referenced nodeIds exist in the validNodeIds set. Replaces invalid
+ * references with $json fallback or removes them entirely.
+ * 
+ * CRITICAL: Never treats $json as a node ID - it's a data reference pattern.
+ * 
+ * @param obj - Object, array, or primitive value to clean
+ * @param validNodeIds - Set of valid node IDs for reference validation
+ * @returns Cleaned object with invalid references removed
  */
 function removeInvalidReferences(obj: any, validNodeIds: Set<string>): any {
   if (obj == null) return obj;
@@ -407,8 +474,13 @@ function removeInvalidReferences(obj: any, validNodeIds: Set<string>): any {
       }
     }
     
-    // Clean up extra whitespace but preserve structure
-    return result.replace(/\s{2,}/g, ' ').trim();
+    // CRITICAL: Only collapse spaces, NOT newlines or tabs
+    // Replace multiple spaces with single space, but preserve newlines and tabs
+    result = result.replace(/[ ]{2,}/g, ' ');
+    // Only trim spaces, not newlines
+    result = result.replace(/^[ ]+|[ ]+$/g, '');
+    
+    return result;
   }
   
   if (Array.isArray(obj)) {
@@ -421,6 +493,11 @@ function removeInvalidReferences(obj: any, validNodeIds: Set<string>): any {
     const requiredFields = ['flowId', 'requestInput', 'subflowId'];
     
     for (const [k, v] of Object.entries(obj)) {
+      // CRITICAL: Skip 'code' field - it should never be cleaned (preserves formatting)
+      if (k === 'code') {
+        cleaned[k] = v;
+        continue;
+      }
       const cleanedValue = removeInvalidReferences(v, validNodeIds);
       // Preserve required fields even if empty, or include non-empty values
       const isRequiredField = requiredFields.includes(k);
@@ -435,8 +512,14 @@ function removeInvalidReferences(obj: any, validNodeIds: Set<string>): any {
 }
 
 /**
- * Creates an error node for failed mappings
- * Uses placeholderNode type since ErrorNode is not a valid Lamatic node type
+ * Creates a placeholder node for failed node mappings.
+ * 
+ * Used when a node cannot be mapped due to errors. The placeholder preserves
+ * the original node information for manual review.
+ * 
+ * @param n8nNode - Original n8n node that failed to map
+ * @param errorMessage - Error message describing why mapping failed
+ * @returns Placeholder Lamatic node with error information
  */
 function createErrorNode(n8nNode: any, errorMessage: string): any {
   return {

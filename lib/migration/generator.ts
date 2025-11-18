@@ -32,20 +32,32 @@ export class LamaticOutputGenerator {
     ]);
     
     // Clean any remaining invalid references (safety net)
+    // CRITICAL: Preserve code fields - they should NOT be cleaned (would destroy formatting)
     for (const node of nodesWithDependencies) {
       if (node.values) {
+        // Save code field before cleaning
+        const codeValue = node.values.code;
         node.values = this.cleanInvalidReferences(node.values, allValidNodeIds);
+        // Restore code field after cleaning (preserve formatting)
+        if (codeValue !== undefined) {
+          node.values.code = codeValue;
+        }
       }
     }
     
     // Also clean trigger node values
     if (triggerNode.values) {
+      const triggerCodeValue = triggerNode.values.code;
       triggerNode.values = this.cleanInvalidReferences(triggerNode.values, allValidNodeIds);
+      if (triggerCodeValue !== undefined) {
+        triggerNode.values.code = triggerCodeValue;
+      }
     }
 
     // Filter out trigger node from regular nodes
+    // Supports both webhookTriggerNode and chatTriggerNode
     const regularNodes = nodesWithDependencies.filter(node => 
-      node.nodeType !== 'webhookTriggerNode'
+      node.nodeType !== 'webhookTriggerNode' && node.nodeType !== 'chatTriggerNode'
     );
 
     // Calculate execution order
@@ -77,6 +89,11 @@ export class LamaticOutputGenerator {
         executionOrder: triggerExecutionOrder
       }
     };
+
+    // CRITICAL: Final code formatting pass - format ALL code fields right before creating workflow
+    // This ensures code is formatted even if it was modified by any previous step
+    this.formatAllCodeFields(nodesWithOrder);
+    this.formatAllCodeFields([triggerWithOrder]);
 
     // Create the final workflow with exact format from example
     const workflow: LamaticWorkflow = {
@@ -113,9 +130,12 @@ export class LamaticOutputGenerator {
 
   /**
    * Find the trigger node from the list of nodes
+   * Supports both webhookTriggerNode and chatTriggerNode
    */
   private findTriggerNode(nodes: LamaticNode[]): LamaticNode | undefined {
-    const trigger = nodes.find(node => node.nodeType === 'webhookTriggerNode');
+    const trigger = nodes.find(node => 
+      node.nodeType === 'webhookTriggerNode' || node.nodeType === 'chatTriggerNode'
+    );
     if (!trigger) {
       // Debug: Log what node types we have
       const nodeTypes = nodes.map(n => `${n.nodeName} (${n.nodeType})`).join(', ');
@@ -180,7 +200,13 @@ export class LamaticOutputGenerator {
         }
       }
       
-      return result.replace(/\s{2,}/g, ' ').trim();
+      // CRITICAL: Only collapse spaces, NOT newlines or tabs
+      // Replace multiple spaces with single space, but preserve newlines and tabs
+      result = result.replace(/[ ]{2,}/g, ' ');
+      // Only trim spaces, not newlines
+      result = result.replace(/^[ ]+|[ ]+$/g, '');
+      
+      return result;
     }
     
     if (Array.isArray(obj)) {
@@ -190,6 +216,11 @@ export class LamaticOutputGenerator {
     if (typeof obj === 'object') {
       const out: Record<string, any> = {};
       for (const [k, v] of Object.entries(obj)) {
+        // CRITICAL: Skip 'code' field - it should never be cleaned (preserves formatting)
+        if (k === 'code') {
+          out[k] = v;
+          continue;
+        }
         const cleaned = this.cleanInvalidReferences(v, validNodeIds);
         if (cleaned !== '' || typeof cleaned === 'number' || typeof cleaned === 'boolean' || cleaned === null || (Array.isArray(cleaned) && cleaned.length > 0)) {
           out[k] = cleaned;
@@ -270,9 +301,85 @@ export class LamaticOutputGenerator {
   }
 
   /**
+   * Formats all code fields in nodes - final pass to ensure code is properly formatted
+   * This is called right before creating the workflow to catch any code that wasn't formatted
+   */
+  private formatAllCodeFields(nodes: LamaticNode[]): void {
+    for (const node of nodes) {
+      if (node.values && typeof node.values.code === 'string' && node.values.code.length > 20) {
+        const code = node.values.code;
+        // Check if code has newlines
+        const newlineCount = (code.match(/\n/g) || []).length;
+        
+        // If no newlines, format it by splitting on semicolons
+        if (newlineCount === 0) {
+          // Simple formatter: split on semicolons (outside strings)
+          let formatted = '';
+          let inString = false;
+          let stringChar = '';
+          let escapeNext = false;
+          
+          for (let i = 0; i < code.length; i++) {
+            const char = code[i];
+            const prevChar = i > 0 ? code[i - 1] : '';
+            
+            if (escapeNext) {
+              escapeNext = false;
+              formatted += char;
+              continue;
+            }
+            if (char === '\\') {
+              escapeNext = true;
+              formatted += char;
+              continue;
+            }
+            
+            if ((char === '"' || char === "'" || char === '`') && !escapeNext) {
+              if (!inString) {
+                inString = true;
+                stringChar = char;
+              } else if (char === stringChar) {
+                inString = false;
+                stringChar = '';
+              }
+              formatted += char;
+              continue;
+            }
+            
+            if (char === ';' && !inString) {
+              formatted += ';\n';
+            } else {
+              formatted += char;
+            }
+          }
+          
+          // Apply basic indentation
+          const lines = formatted.split('\n').map(l => l.trim()).filter(l => l);
+          let indent = 0;
+          const indented = lines.map(line => {
+            if (line.startsWith('}') || line.startsWith(']')) indent = Math.max(0, indent - 1);
+            const result = '  '.repeat(indent) + line;
+            if (line.endsWith('{') || line.endsWith('[')) indent++;
+            return result;
+          }).join('\n');
+          
+          node.values.code = indented;
+          console.log(`[Final Format] Formatted code for node: ${node.nodeName}, Newlines: ${(indented.match(/\n/g) || []).length}`);
+        }
+      }
+    }
+  }
+
+  /**
    * Format workflow for download
    */
   formatWorkflowForDownload(workflow: LamaticWorkflow): string {
+    // CRITICAL: Format code one more time right before stringifying
+    this.formatAllCodeFields(workflow.nodes);
+    if (workflow.triggerNode.values && workflow.triggerNode.values.code) {
+      this.formatAllCodeFields([workflow.triggerNode]);
+    }
+    
     return JSON.stringify(workflow, null, 2);
   }
 

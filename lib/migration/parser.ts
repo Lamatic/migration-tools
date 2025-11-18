@@ -1,54 +1,53 @@
 import { N8nWorkflow, N8nNode, N8nConnection } from './types';
 
 /**
- * Parser for n8n workflow JSON files
- * Extracts and validates n8n workflow structure
+ * Parser for n8n workflow JSON files.
+ * 
+ * Handles parsing, validation, and normalization of n8n workflow structures.
+ * Supports multiple n8n export formats including template exports and instance exports.
  */
 export class N8nParser {
   /**
-   * Parse n8n workflow from JSON content
+   * Parses n8n workflow JSON string into normalized N8nWorkflow structure.
+   * 
+   * @param jsonContent - Raw JSON string from n8n workflow export
+   * @returns Normalized N8nWorkflow object with validated structure
+   * @throws Error if JSON is invalid or workflow structure is malformed
    */
   parseWorkflow(jsonContent: string): N8nWorkflow {
     try {
       const workflow = JSON.parse(jsonContent);
       
-      // Validate nodes exist
+      // Validate required workflow structure: nodes array must exist
       if (!workflow.nodes || !Array.isArray(workflow.nodes)) {
         throw new Error('Invalid n8n workflow structure: missing nodes array');
       }
 
-      // Auto-generate name if missing (handles template exports without name field)
+      // Generate workflow name with fallback hierarchy for template/instance exports
+      // Priority: explicit name > templateId > instanceId > trigger node name > default
       let workflowName = workflow.name;
       if (!workflowName) {
-        // Try to get name from meta.templateId
         if (workflow.meta?.templateId) {
           workflowName = `Template #${workflow.meta.templateId}`;
-        }
-        // Try to get name from meta.instanceId
-        else if (workflow.meta?.instanceId) {
+        } else if (workflow.meta?.instanceId) {
           workflowName = `Workflow Instance ${workflow.meta.instanceId.substring(0, 8)}`;
-        }
-        // Try to get name from first trigger node
-        else {
+        } else {
+          // Extract name from first trigger node as fallback
           const firstTrigger = workflow.nodes.find((n: any) => 
             n.type?.includes('webhook') || 
             n.type?.includes('trigger') ||
             n.type?.includes('schedule')
           );
-          if (firstTrigger?.name) {
-            workflowName = `${firstTrigger.name} Workflow`;
-          }
-          // Final fallback
-          else {
-            workflowName = 'Untitled Workflow';
-          }
+          workflowName = firstTrigger?.name 
+            ? `${firstTrigger.name} Workflow`
+            : 'Untitled Workflow';
         }
       }
 
-      // Normalize connections
+      // Normalize connection structure to handle both array and object formats
       const normalizedConnections = this.normalizeConnections(workflow.connections || {});
       
-      // Normalize nodes
+      // Normalize nodes: filter non-functional nodes and standardize structure
       const normalizedNodes = this.normalizeNodes(workflow.nodes);
 
       return {
@@ -71,7 +70,13 @@ export class N8nParser {
   }
 
   /**
-   * Validate workflow for migration compatibility
+   * Validates workflow structure and compatibility for migration.
+   * 
+   * Checks for required elements, trigger nodes, and provides warnings for
+   * non-critical issues that may affect migration quality.
+   * 
+   * @param workflow - Normalized n8n workflow to validate
+   * @returns Validation result with errors (blocking) and warnings (non-blocking)
    */
   validateForMigration(workflow: N8nWorkflow): {
     isValid: boolean;
@@ -81,16 +86,17 @@ export class N8nParser {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    // Note: Workflow name is now auto-generated if missing, so this check is informational only
+    // Workflow name is auto-generated if missing, so this is informational only
     if (!workflow.name) {
       warnings.push('Workflow name was auto-generated (original workflow missing name field)');
     }
 
+    // Require at least one node for valid workflow
     if (!workflow.nodes || workflow.nodes.length === 0) {
       errors.push('Workflow must contain at least one node');
     }
 
-    // Check for trigger nodes
+    // Detect trigger nodes: webhook, trigger, or schedule types
     const triggerNodes = workflow.nodes.filter(node => 
       node.type.includes('webhook') || 
       node.type.includes('trigger') ||
@@ -101,7 +107,7 @@ export class N8nParser {
       warnings.push('No trigger nodes found - workflow may not be executable');
     }
 
-    // Check for unsupported node types
+    // Identify documentation nodes (sticky notes) that will be filtered out
     const unsupportedNodes = workflow.nodes.filter(node => 
       node.type.includes('stickyNote') || 
       node.type.includes('note')
@@ -119,8 +125,17 @@ export class N8nParser {
   }
 
   /**
-   * Normalize n8n connections structure
-   * CRITICAL: Preserves output index for switch/if nodes (the array index in portConnections)
+   * Normalizes n8n connection structure to unified format.
+   * 
+   * Handles two n8n connection formats:
+   * 1. Array format: [connection1, connection2, ...]
+   * 2. Object format: { main: [[conn1]], ai_memory: [[conn2]] }
+   * 
+   * CRITICAL: Preserves outputIndex for switch/if nodes - the array index in
+   * portConnections represents the branch/output path (0=first branch, 1=second, etc.)
+   * 
+   * @param connections - Raw n8n connections object (may be array or object format)
+   * @returns Normalized connections map: sourceNodeName -> N8nConnection[]
    */
   private normalizeConnections(connections: Record<string, any>): Record<string, N8nConnection[]> {
     const normalized: Record<string, N8nConnection[]> = {};
@@ -135,21 +150,23 @@ export class N8nParser {
           outputIndex: outputIndex // Preserve output index for switch/if nodes
         }));
       } else if (connectionData && typeof connectionData === 'object') {
-        // Handle object format: { main: [[conn1]], ai_memory: [[conn2]] }
-        // CRITICAL: The array index in portConnections is the output index (for switch/if branches)
+        // Handle object format: { main: [[conn1]], ai_memory: [[conn2]], ai_tool: [[conn3]] }
+        // Structure: portType -> [output0[], output1[], ...] where each output array contains connections
+        // CRITICAL: Array index = outputIndex (branch path for switch/if nodes)
         const allConnections: N8nConnection[] = [];
         
         for (const [portType, portConnections] of Object.entries(connectionData)) {
           if (Array.isArray(portConnections)) {
-            // Each element in portConnections array represents a different output/branch
+            // Each array element represents a different output port/branch
+            // outputIndex 0 = first branch, 1 = second branch, etc.
             portConnections.forEach((portConnection, outputIndex) => {
               if (Array.isArray(portConnection)) {
                 for (const conn of portConnection) {
                   allConnections.push({
                     node: conn.node || conn.targetNode || '',
-                    type: portType,
+                    type: portType, // 'main', 'ai_memory', 'ai_languageModel', 'ai_tool', etc.
                     index: conn.index !== undefined ? conn.index : outputIndex,
-                    outputIndex: outputIndex // CRITICAL: Preserve output index for switch/if branches
+                    outputIndex: outputIndex // Preserve for switch/if branch routing
                   });
                 }
               }
@@ -165,12 +182,18 @@ export class N8nParser {
   }
 
   /**
-   * Normalize n8n nodes structure
+   * Normalizes n8n node structure and filters non-functional nodes.
+   * 
+   * Removes documentation nodes (sticky notes) and standardizes node properties
+   * with default values for missing fields.
+   * 
+   * @param nodes - Raw n8n node array from workflow JSON
+   * @returns Normalized N8nNode array with consistent structure
    */
   private normalizeNodes(nodes: any[]): N8nNode[] {
     return nodes
       .filter(node => {
-        // Filter out sticky notes as they are not functional nodes
+        // Filter out sticky notes - they are documentation only, not executable nodes
         return node.type !== 'n8n-nodes-base.stickyNote';
       })
       .map(node => ({
@@ -185,7 +208,12 @@ export class N8nParser {
   }
 
   /**
-   * Extract trigger nodes from workflow
+   * Extracts all trigger nodes from workflow.
+   * 
+   * Identifies nodes that initiate workflow execution: webhooks, triggers, schedules, manual triggers.
+   * 
+   * @param workflow - Normalized n8n workflow
+   * @returns Array of trigger nodes
    */
   extractTriggerNodes(workflow: N8nWorkflow): N8nNode[] {
     return workflow.nodes.filter(node => 
@@ -197,7 +225,12 @@ export class N8nParser {
   }
 
   /**
-   * Extract regular nodes (non-trigger) from workflow
+   * Extracts all non-trigger nodes from workflow.
+   * 
+   * Returns all executable nodes excluding triggers, schedules, and documentation nodes.
+   * 
+   * @param workflow - Normalized n8n workflow
+   * @returns Array of non-trigger executable nodes
    */
   extractRegularNodes(workflow: N8nWorkflow): N8nNode[] {
     return workflow.nodes.filter(node => 

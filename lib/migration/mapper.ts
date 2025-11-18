@@ -500,6 +500,22 @@ export class NodeMapper {
       notes: 'OpenAI LLM chat model',
     });
 
+    // Postgres Tool → postgresNode (LangChain tool for agents)
+    this.addMapping({
+      n8nType: 'n8n-nodes-base.postgresTool',
+      lamaticType: 'postgresNode',
+      isSupported: true,
+      parameterMappings: [
+        { n8nParameter: 'query', lamaticParameter: 'query', required: true },
+        { n8nParameter: 'operation', lamaticParameter: 'action', required: false },
+        { n8nParameter: 'options', lamaticParameter: 'options', required: false },
+      ],
+      credentialMappings: [
+        { n8nCredential: 'postgres', lamaticCredential: 'postgres', requiresReauth: true }
+      ],
+      notes: 'PostgreSQL tool for LangChain agents - connects via ai_tool connection type',
+    });
+
     // Google Drive → googleDriveNode
     this.addMapping({
       n8nType: 'n8n-nodes-base.googleDrive',
@@ -1585,10 +1601,135 @@ export class NodeMapper {
         // Handle different code node types (aggregate, limit, editImage, compression, merge)
         const code = this.getNestedValue(n8nNode.parameters, 'jsCode');
         if (code) {
+          // CRITICAL: Transform n8n code syntax to Lamatic syntax
+          // This converts items -> $input.all() and preserves formatting
+          let transformedCode = this.transformN8nCodeToLamatic(code);
+          
+          // CRITICAL: ALWAYS format code - FORCE formatting regardless of detection
+          // The issue is that code might have newlines but still be minified
+          // So we ALWAYS run the formatter to ensure proper line breaks
+          
+          // Step 1: Always run the force formatter first
+          // This normalizes code (removes existing newlines) then reformats from scratch
+          transformedCode = this.forceFormatSingleLineCode(transformedCode);
+          
+          // Step 2: Verify we have proper line breaks - count semicolons vs newlines
+          const semicolonCount = (transformedCode.match(/;/g) || []).length;
+          const newlineCount = (transformedCode.match(/\n/g) || []).length;
+          
+          // If we have many semicolons but few newlines, code is still minified
+          if (semicolonCount > 2 && newlineCount < semicolonCount / 2) {
+            // Code is still minified - use simple formatter
+            transformedCode = this.simpleFormatCode(transformedCode);
+          }
+          
+          // Step 3: ABSOLUTE FINAL CHECK - ensure we have newlines
+          // If code still has no newlines, something went wrong - force format again
+          const finalNewlineCheck = (transformedCode.match(/\n/g) || []).length;
+          if (finalNewlineCheck === 0 && transformedCode.length > 20) {
+            // Emergency fallback: simple character-by-character formatting
+            transformedCode = this.simpleFormatCode(transformedCode);
+          }
+          
+          // Step 4: Final check - if code appears as one line, force format
+          const lines = transformedCode.split('\n').filter(l => l.trim().length > 0);
+          if (lines.length <= 1 && transformedCode.length > 20) {
+            // Character-by-character formatting as absolute last resort
+            let formatted = '';
+            let inString = false;
+            let stringChar = '';
+            let escapeNext = false;
+            
+            for (let i = 0; i < transformedCode.length; i++) {
+              const char = transformedCode[i];
+              const prevChar = i > 0 ? transformedCode[i - 1] : '';
+              
+              // Handle escape sequences
+              if (escapeNext) {
+                escapeNext = false;
+                formatted += char;
+                continue;
+              }
+              if (char === '\\') {
+                escapeNext = true;
+                formatted += char;
+                continue;
+              }
+              
+              // Toggle string state
+              if ((char === '"' || char === "'" || char === '`') && !escapeNext) {
+                if (!inString) {
+                  inString = true;
+                  stringChar = char;
+                } else if (char === stringChar) {
+                  inString = false;
+                  stringChar = '';
+                }
+              }
+              
+              // Add newline after semicolon (outside strings)
+              if (char === ';' && !inString) {
+                formatted += ';\n';
+              } else {
+                formatted += char;
+              }
+            }
+            
+            // Clean up and indent
+            const formattedLines = formatted.split('\n').map(l => l.trim()).filter(l => l);
+            let indent = 0;
+            transformedCode = formattedLines.map(line => {
+              if (line.startsWith('}') || line.startsWith(']')) indent = Math.max(0, indent - 1);
+              const indented = '  '.repeat(indent) + line;
+              if (line.endsWith('{') || line.endsWith('[')) indent++;
+              return indented;
+            }).join('\n');
+          }
+          
+          // FINAL VERIFICATION: Ensure code has newlines before storing
+          // This is the absolute last check - if code has no newlines, something is wrong
+          const verificationNewlines = (transformedCode.match(/\n/g) || []).length;
+          if (verificationNewlines === 0 && transformedCode.length > 20) {
+            // This should never happen, but if it does, use emergency formatter
+            console.warn(`[Code Formatting] Code has no newlines after formatting! Node: ${baseNode.nodeName}`);
+            transformedCode = this.simpleFormatCode(transformedCode);
+          }
+          
+          // CRITICAL: Final check - if still no newlines, force add them after every semicolon
+          const finalCheck = (transformedCode.match(/\n/g) || []).length;
+          if (finalCheck === 0 && transformedCode.length > 20) {
+            // Emergency: split on semicolons and join with newlines
+            const parts = transformedCode.split(';');
+            if (parts.length > 1) {
+              transformedCode = parts.map((p, i) => {
+                const trimmed = p.trim();
+                if (trimmed) {
+                  return i < parts.length - 1 ? trimmed + ';' : trimmed;
+                }
+                return '';
+              }).filter(p => p).join('\n');
+            }
+          }
+          
+          // DEBUG: Log final state
+          const finalNewlineCount = (transformedCode.match(/\n/g) || []).length;
+          if (finalNewlineCount === 0 && transformedCode.length > 50) {
+            console.error(`[Code Formatting ERROR] Code still has no newlines after all formatting attempts! Node: ${baseNode.nodeName}, Length: ${transformedCode.length}`);
+            console.error(`[Code Formatting ERROR] First 200 chars: ${transformedCode.substring(0, 200)}`);
+          } else if (finalNewlineCount > 0) {
+            console.log(`[Code Formatting SUCCESS] Node: ${baseNode.nodeName}, Newlines: ${finalNewlineCount}, Length: ${transformedCode.length}`);
+          }
+          
+          // CRITICAL: Ensure code is a string and not modified
+          if (typeof transformedCode !== 'string') {
+            console.error(`[Code Formatting ERROR] Code is not a string! Type: ${typeof transformedCode}, Node: ${baseNode.nodeName}`);
+            transformedCode = String(transformedCode);
+          }
+          
           return {
             ...baseNode,
             values: {
-              code: code
+              code: transformedCode
             },
             'x-runtime': xRuntime,
             '_flowMetadata': flowMetadata,
@@ -2424,6 +2565,694 @@ export class NodeMapper {
     }
     
     return operatorMap[opStr] || opStr;
+  }
+
+  /**
+   * Transforms n8n code syntax to Lamatic code syntax
+   * Main transformation: items -> $input.all()
+   * Preserves line breaks and formatting
+   */
+  private transformN8nCodeToLamatic(n8nCode: string): string {
+    if (!n8nCode || typeof n8nCode !== 'string') {
+      return n8nCode || '';
+    }
+
+    // CRITICAL: Handle escaped newlines - convert \n to actual newlines
+    // n8n JSON files may have escaped newlines that need to be converted
+    // When JSON is parsed, \n should become actual newlines, but sometimes
+    // code comes as a single line with literal \n characters
+    let transformedCode = n8nCode;
+    
+    // First, check if code has actual newlines already
+    const hasActualNewlines = transformedCode.includes('\n');
+    
+    // If no actual newlines, check for escaped newlines (literal \n sequences)
+    // This can happen if the JSON was double-encoded or stored incorrectly
+    if (!hasActualNewlines && transformedCode.includes('\\n')) {
+      // Convert escaped newlines to actual newlines
+      // But be careful - we need to avoid converting \\n in string literals
+      // Simple approach: convert all \\n to \n (the JSON parser should have done this, but just in case)
+      transformedCode = transformedCode.replace(/\\n/g, '\n');
+      transformedCode = transformedCode.replace(/\\t/g, '\t');
+      transformedCode = transformedCode.replace(/\\r/g, '\r');
+    }
+
+    // CRITICAL: Replace n8n's global 'items' variable with Lamatic's $input.all()
+    // Order matters: handle items[index] patterns FIRST, then standalone items
+    
+    // Pattern 1: Replace items[index] patterns BEFORE replacing standalone items
+    // items[0] -> $input.all()[0]
+    // items[i] -> $input.all()[i]
+    // items.length -> $input.all().length
+    transformedCode = transformedCode.replace(/\bitems\[(\d+|\w+)\]/g, '$input.all()[$1]');
+    transformedCode = transformedCode.replace(/\bitems\.length\b/g, '$input.all().length');
+    transformedCode = transformedCode.replace(/\bitems\.(forEach|map|filter|reduce|find|some|every)\b/g, '$input.all().$1');
+    
+    // Pattern 2: Replace standalone 'items' (not part of another word or array access)
+    // Use word boundaries to avoid replacing 'items' inside other words
+    // This catches cases like: const data = items; or return items;
+    transformedCode = transformedCode.replace(/\bitems\b/g, '$input.all()');
+    
+    // Pattern 3: Handle $input.all() that might have been incorrectly transformed
+    // If we see $input.all().all(), fix it (shouldn't happen but safety check)
+    transformedCode = transformedCode.replace(/\$input\.all()\.all()/g, '$input.all()');
+
+    // Pattern 4: Replace $input[index] (n8n's alternative) with $input.all()[index]
+    // But be careful - $input might be used correctly in some contexts
+    // Only replace if it's clear it's meant to be the items array
+    transformedCode = transformedCode.replace(/\$input\[(\d+|\w+)\]/g, '$input.all()[$1]');
+
+    // Pattern 5: Handle $json references - these should stay as $json (data reference, not node)
+    // No transformation needed for $json
+
+    // Pattern 6: Optimize - if $input.all() is used multiple times, add const input = $input.all();
+    // This makes the code cleaner and more efficient
+    const inputUsageCount = (transformedCode.match(/\$input\.all()/g) || []).length;
+    
+    // If $input.all() is used more than once, add a const declaration at the top
+    // But only if there isn't already a const input declaration
+    if (inputUsageCount > 1 && !transformedCode.match(/const\s+input\s*=\s*\$input\.all()/)) {
+      // Find the first line that's not a comment or empty
+      const lines = transformedCode.split('\n');
+      let insertIndex = 0;
+      
+      // Skip leading comments and empty lines
+      for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed && !trimmed.startsWith('//') && !trimmed.startsWith('/*') && !trimmed.startsWith('*')) {
+          insertIndex = i;
+          break;
+        }
+      }
+      
+      // Insert const input = $input.all(); after comments
+      lines.splice(insertIndex, 0, 'const input = $input.all();');
+      
+      // Replace all subsequent $input.all() with just 'input' (except the const declaration)
+      for (let i = insertIndex + 1; i < lines.length; i++) {
+        lines[i] = lines[i].replace(/\$input\.all()/g, 'input');
+      }
+      
+      transformedCode = lines.join('\n');
+    }
+
+    // CRITICAL: Format code with proper line breaks if it's minified
+    // ALWAYS format single-line code to ensure readability
+    const linesBeforeFormat = transformedCode.split('\n');
+    const actualLineCount = linesBeforeFormat.filter(l => l.trim().length > 0).length;
+    const isSingleLine = actualLineCount <= 1;
+    
+    // Be very aggressive - format if single line OR if very few lines
+    if (isSingleLine && transformedCode.length > 20) {
+      // FORCE format single-line code by splitting on semicolons
+      transformedCode = this.forceFormatSingleLineCode(transformedCode);
+    } else if (actualLineCount < 5 && transformedCode.length > 100) {
+      // Also format if code has few lines but is long (likely minified)
+      transformedCode = this.forceFormatSingleLineCode(transformedCode);
+    } else {
+      // Use the smart formatter for multi-line code
+      transformedCode = this.formatCodeWithLineBreaks(transformedCode);
+    }
+    
+    // Final safety check: if code is still on one line and long, force format it
+    const finalLines = transformedCode.split('\n');
+    const finalNonEmptyLines = finalLines.filter(l => l.trim().length > 0);
+    if (finalNonEmptyLines.length <= 1 && transformedCode.length > 50) {
+      // Last resort: use simple formatter
+      transformedCode = this.simpleFormatCode(transformedCode);
+    }
+
+    // Preserve original line breaks and formatting
+    // The code should already have proper line breaks, but ensure they're preserved
+    return transformedCode;
+  }
+
+  /**
+   * Simple fallback formatter - splits on semicolons with basic string handling
+   * Used as last resort when other formatters fail
+   * CRITICAL: Also normalizes code first to ensure consistent formatting
+   */
+  private simpleFormatCode(code: string): string {
+    if (!code || typeof code !== 'string') {
+      return code;
+    }
+
+    // CRITICAL: Normalize code first - remove existing newlines/tabs (outside strings)
+    let normalized = '';
+    let inString = false;
+    let stringChar = '';
+    let inTemplate = false;
+    let escapeNext = false;
+    
+    for (let i = 0; i < code.length; i++) {
+      const char = code[i];
+      const prevChar = i > 0 ? code[i - 1] : '';
+      
+      // Handle escape sequences
+      if (escapeNext) {
+        escapeNext = false;
+        normalized += char;
+        continue;
+      }
+      if (char === '\\') {
+        escapeNext = true;
+        normalized += char;
+        continue;
+      }
+      
+      // Handle strings - preserve newlines inside strings
+      if (char === '`' && !inString) {
+        inTemplate = !inTemplate;
+        normalized += char;
+        continue;
+      }
+      if ((char === '"' || char === "'") && !inTemplate) {
+        if (!inString) {
+          inString = true;
+          stringChar = char;
+        } else if (char === stringChar) {
+          inString = false;
+          stringChar = '';
+        }
+        normalized += char;
+        continue;
+      }
+      
+      // Outside strings: replace newlines/tabs with spaces
+      if (!inString && !inTemplate) {
+        if (char === '\n' || char === '\r' || char === '\t') {
+          normalized += ' ';
+        } else {
+          normalized += char;
+        }
+      } else {
+        // Inside strings: preserve everything
+        normalized += char;
+      }
+    }
+    
+    // Now format the normalized code - split on semicolons
+    let result = '';
+    inString = false;
+    stringChar = '';
+    inTemplate = false;
+    escapeNext = false;
+    
+    for (let i = 0; i < normalized.length; i++) {
+      const char = normalized[i];
+      const prevChar = i > 0 ? normalized[i - 1] : '';
+      
+      // Handle escape sequences
+      if (escapeNext) {
+        escapeNext = false;
+        result += char;
+        continue;
+      }
+      if (char === '\\') {
+        escapeNext = true;
+        result += char;
+        continue;
+      }
+      
+      // Toggle string state
+      if (char === '`' && !inString) {
+        inTemplate = !inTemplate;
+        result += char;
+        continue;
+      }
+      if ((char === '"' || char === "'") && !inTemplate) {
+        if (!inString) {
+          inString = true;
+          stringChar = char;
+        } else if (char === stringChar && !escapeNext) {
+          inString = false;
+          stringChar = '';
+        }
+        result += char;
+        continue;
+      }
+      
+      // Add newline after semicolon (outside strings)
+      if (char === ';' && !inString && !inTemplate) {
+        result += ';\n';
+      } else {
+        result += char;
+      }
+    }
+    
+    // Clean up and apply basic indentation
+    const lines = result.split('\n').map(l => l.trim()).filter(l => l);
+    let indent = 0;
+    return lines.map(line => {
+      if (line.startsWith('}') || line.startsWith(']')) indent = Math.max(0, indent - 1);
+      const indented = '  '.repeat(indent) + line;
+      if (line.endsWith('{') || line.endsWith('[')) indent++;
+      return indented;
+    }).join('\n');
+  }
+
+  /**
+   * Forces formatting of code by splitting on semicolons
+   * Properly handles strings, comments, and indentation
+   * CRITICAL: Normalizes code first (removes existing newlines) then reformats from scratch
+   */
+  private forceFormatSingleLineCode(code: string): string {
+    if (!code || typeof code !== 'string') {
+      return code;
+    }
+
+    // CRITICAL: First normalize the code - remove all existing newlines/tabs
+    // Replace newlines and tabs with spaces, but preserve them in string literals
+    let normalized = '';
+    let inString = false;
+    let stringChar = '';
+    let inTemplate = false;
+    let escapeNext = false;
+    
+    for (let i = 0; i < code.length; i++) {
+      const char = code[i];
+      const prevChar = i > 0 ? code[i - 1] : '';
+      
+      // Handle escape sequences
+      if (escapeNext) {
+        escapeNext = false;
+        normalized += char;
+        continue;
+      }
+      if (char === '\\') {
+        escapeNext = true;
+        normalized += char;
+        continue;
+      }
+      
+      // Handle strings - preserve newlines inside strings
+      if (char === '`' && !inString) {
+        inTemplate = !inTemplate;
+        normalized += char;
+        continue;
+      }
+      if ((char === '"' || char === "'") && !inTemplate) {
+        if (!inString) {
+          inString = true;
+          stringChar = char;
+        } else if (char === stringChar) {
+          inString = false;
+          stringChar = '';
+        }
+        normalized += char;
+        continue;
+      }
+      
+      // Outside strings: replace newlines/tabs with spaces
+      if (!inString && !inTemplate) {
+        if (char === '\n' || char === '\r' || char === '\t') {
+          normalized += ' ';
+        } else {
+          normalized += char;
+        }
+      } else {
+        // Inside strings: preserve everything
+        normalized += char;
+      }
+    }
+    
+    // Now format the normalized code (single line)
+    // CRITICAL: Ensure we start fresh with all state variables
+    let result = '';
+    let i = 0;
+    inString = false;
+    stringChar = '';
+    inTemplate = false;
+    let inSingleLineComment = false;
+    let inMultiLineComment = false;
+    escapeNext = false;
+    
+    // CRITICAL: Track if we've added any newlines
+    let hasNewlines = false;
+    
+    while (i < normalized.length) {
+      const char = normalized[i];
+      const nextChar = i + 1 < normalized.length ? normalized[i + 1] : '';
+      const prevChar = i > 0 ? normalized[i - 1] : '';
+      
+      // Handle escape sequences (but not in comments)
+      if (escapeNext && !inSingleLineComment && !inMultiLineComment) {
+        escapeNext = false;
+        result += char;
+        i++;
+        continue;
+      }
+      if (char === '\\' && !inSingleLineComment && !inMultiLineComment) {
+        escapeNext = true;
+        result += char;
+        i++;
+        continue;
+      }
+      
+      // Handle comments FIRST (before strings)
+      if (!inString && !inTemplate && !escapeNext) {
+        // Single-line comment
+        if (char === '/' && nextChar === '/' && !inMultiLineComment) {
+          inSingleLineComment = true;
+          result += char;
+          i++;
+          continue;
+        }
+        // Multi-line comment start
+        if (char === '/' && nextChar === '*' && !inSingleLineComment) {
+          inMultiLineComment = true;
+          result += char;
+          i++;
+          continue;
+        }
+        // Multi-line comment end
+        if (inMultiLineComment && char === '*' && nextChar === '/') {
+          inMultiLineComment = false;
+          result += char + nextChar;
+          i += 2;
+          continue;
+        }
+        // Single-line comment ends at newline (we'll add it)
+        if (inSingleLineComment && char === '\n') {
+          inSingleLineComment = false;
+        }
+        // In comment - just add the char
+        if (inSingleLineComment || inMultiLineComment) {
+          result += char;
+          i++;
+          continue;
+        }
+      }
+      
+      // Handle strings and template literals (only outside comments)
+      if (!inSingleLineComment && !inMultiLineComment) {
+        if (char === '`' && !inString) {
+          inTemplate = !inTemplate;
+          result += char;
+          i++;
+          continue;
+        }
+        if ((char === '"' || char === "'") && !inTemplate) {
+          if (!inString) {
+            inString = true;
+            stringChar = char;
+          } else if (char === stringChar && !escapeNext) {
+            inString = false;
+            stringChar = '';
+          }
+          result += char;
+          i++;
+          continue;
+        }
+      }
+      
+      // CRITICAL: Add newline after semicolon (but not inside strings/comments)
+      if (char === ';' && !inString && !inTemplate && !inSingleLineComment && !inMultiLineComment) {
+        result += ';\n';
+        hasNewlines = true;
+        i++;
+        continue;
+      }
+      
+      // Add newline before keywords (const, let, var, function, return) if not at start
+      // Check BEFORE adding the character
+      if (!inString && !inTemplate && !inSingleLineComment && !inMultiLineComment) {
+        const remaining = normalized.substring(i);
+        const keywordMatch = remaining.match(/^(const|let|var|function|return)\s+/);
+        if (keywordMatch) {
+          // Check if previous char is not already a newline or at start
+          if (result.length > 0 && !result.endsWith('\n') && prevChar !== '\n' && prevChar !== ';' && prevChar !== '{' && prevChar !== '}') {
+            result += '\n';
+          }
+        }
+      }
+      
+      // Add newline after closing brace if followed by keyword or another statement
+      if (char === '}' && !inString && !inTemplate && !inSingleLineComment && !inMultiLineComment) {
+        // Check what comes after (skip whitespace)
+        let j = i + 1;
+        while (j < normalized.length && normalized[j] === ' ') {
+          j++;
+        }
+        const afterBrace = normalized.substring(j);
+        // If followed by keyword or semicolon, add newline
+        if (afterBrace.match(/^(const|let|var|function|return|;)/)) {
+          result += '}\n';
+          i++;
+          continue;
+        }
+        // Also add newline if followed by something other than ; } ) ] ,
+        const afterBraceChar = j < normalized.length ? normalized[j] : '';
+        if (afterBraceChar && afterBraceChar !== ';' && afterBraceChar !== '}' && 
+            afterBraceChar !== ')' && afterBraceChar !== ']' && afterBraceChar !== ',') {
+          result += '}\n';
+          i++;
+          continue;
+        }
+      }
+      
+      result += char;
+      i++;
+    }
+    
+    // CRITICAL: If we didn't add any newlines, force add them after semicolons
+    if (!hasNewlines && normalized.length > 20) {
+      // Emergency: split on semicolons and add newlines
+      const parts = normalized.split(';');
+      if (parts.length > 1) {
+        result = parts.map((p, idx) => {
+          const trimmed = p.trim();
+          if (trimmed) {
+            return idx < parts.length - 1 ? trimmed + ';' : trimmed;
+          }
+          return '';
+        }).filter(p => p).join('\n');
+        hasNewlines = true;
+      }
+    }
+    
+    // Clean up: remove multiple consecutive newlines (but preserve comment newlines)
+    result = result.replace(/\n{3,}/g, '\n\n');
+    
+    // Apply proper indentation
+    const formattedLines = result.split('\n');
+    let indentLevel = 0;
+    const indentedLines: string[] = [];
+    
+    for (let j = 0; j < formattedLines.length; j++) {
+      let line = formattedLines[j];
+      const trimmed = line.trim();
+      
+      if (!trimmed) {
+        indentedLines.push('');
+        continue;
+      }
+      
+      // Decrease indent before closing braces/brackets
+      if (trimmed.startsWith('}') || trimmed.startsWith(']')) {
+        indentLevel = Math.max(0, indentLevel - 1);
+      }
+      
+      // Add indented line
+      indentedLines.push('  '.repeat(indentLevel) + trimmed);
+      
+      // Increase indent after opening braces/brackets (but not if it's a one-liner)
+      if ((trimmed.endsWith('{') || trimmed.endsWith('[')) && 
+          !trimmed.includes('}') && !trimmed.includes(']')) {
+        indentLevel++;
+      }
+    }
+    
+    return indentedLines.join('\n');
+  }
+
+  /**
+   * Formats minified JavaScript code with proper line breaks
+   * Simple approach: split on semicolons and add newlines
+   * ALWAYS formats if code is on one line to ensure readability
+   */
+  private formatCodeWithLineBreaks(code: string): string {
+    if (!code || typeof code !== 'string') {
+      return code;
+    }
+
+    // CRITICAL: Always format code that appears to be minified
+    // Check if code is already formatted (has multiple lines with proper structure)
+    const lines = code.split('\n');
+    const nonEmptyLines = lines.filter(l => l.trim().length > 0);
+    
+    // If code has 10+ non-empty lines with semicolons on separate lines, assume it's formatted
+    // Check if semicolons are already on separate lines
+    let hasFormattedSemicolons = true;
+    if (nonEmptyLines.length > 0) {
+      const linesWithSemicolons = lines.filter(l => l.includes(';') && l.trim().length > 1);
+      // If we have lines with semicolons, check if they're at the end (formatted)
+      hasFormattedSemicolons = linesWithSemicolons.every(l => l.trim().endsWith(';') || l.trim().endsWith('; '));
+    }
+    
+    if (nonEmptyLines.length >= 10 && hasFormattedSemicolons) {
+      return code;
+    }
+
+    // ALWAYS format if code is on one line OR has very few lines
+    // This ensures code is always readable in the code node
+    // Be very aggressive - format anything that looks minified
+    const isMinified = lines.length === 1 || 
+                       (lines.length <= 2 && code.length > 30) ||
+                       (lines.length <= 3 && code.length > 100 && !hasFormattedSemicolons);
+    
+    if (!isMinified) {
+      return code;
+    }
+
+    // CRITICAL: Simple and aggressive approach - split on semicolons and add newlines
+    // This ensures code is always readable, even if it means breaking some edge cases
+    let result = '';
+    let i = 0;
+    let inString = false;
+    let stringChar = '';
+    let inTemplate = false;
+    let inComment = false;
+    let escapeNext = false;
+    
+    while (i < code.length) {
+      const char = code[i];
+      const nextChar = i + 1 < code.length ? code[i + 1] : '';
+      const prevChar = i > 0 ? code[i - 1] : '';
+      
+      // Handle escape sequences
+      if (escapeNext) {
+        escapeNext = false;
+        result += char;
+        i++;
+        continue;
+      }
+      if (char === '\\') {
+        escapeNext = true;
+        result += char;
+        i++;
+        continue;
+      }
+      
+      // Handle comments
+      if (!inString && !inTemplate && !escapeNext) {
+        if (char === '/' && nextChar === '/') {
+          inComment = true;
+          result += char;
+          i++;
+          continue;
+        }
+        if (char === '/' && nextChar === '*') {
+          inComment = true;
+          result += char;
+          i++;
+          continue;
+        }
+        if (inComment && char === '*' && nextChar === '/') {
+          inComment = false;
+          result += char + nextChar;
+          i += 2;
+          continue;
+        }
+        if (inComment) {
+          result += char;
+          i++;
+          continue;
+        }
+      }
+      
+      // Handle strings and template literals
+      if (!inComment) {
+        if (char === '`' && !inString) {
+          inTemplate = !inTemplate;
+          result += char;
+          i++;
+          continue;
+        }
+        if ((char === '"' || char === "'") && !inTemplate) {
+          if (!inString) {
+            inString = true;
+            stringChar = char;
+          } else if (char === stringChar) {
+            inString = false;
+            stringChar = '';
+          }
+          result += char;
+          i++;
+          continue;
+        }
+      }
+      
+      // CRITICAL: Add newline after semicolon (but not inside strings/comments)
+      // This is the main formatting rule - every statement gets its own line
+      if (char === ';' && !inString && !inTemplate && !inComment) {
+        result += ';\n';
+        i++;
+        continue;
+      }
+      
+      // Add newline after closing brace (if followed by something)
+      if (char === '}' && !inString && !inTemplate && !inComment) {
+        // Skip whitespace after }
+        let j = i + 1;
+        while (j < code.length && (code[j] === ' ' || code[j] === '\t' || code[j] === '\n')) {
+          j++;
+        }
+        const afterBrace = j < code.length ? code[j] : '';
+        // Add newline if followed by something other than ; } ) ] ,
+        if (afterBrace && afterBrace !== ';' && afterBrace !== '}' && 
+            afterBrace !== ')' && afterBrace !== ']' && afterBrace !== ',') {
+          result += '}\n';
+          i++;
+          continue;
+        }
+      }
+      
+      // Add newline before keywords (const, let, var, function, return) if not at start
+      if (!inString && !inTemplate && !inComment && prevChar && 
+          prevChar !== '\n' && prevChar !== ';' && prevChar !== '{' && prevChar !== '}') {
+        const remaining = code.substring(i);
+        if (remaining.match(/^(const|let|var|function|return)\s+/)) {
+          if (!/[a-zA-Z0-9_]/.test(prevChar)) {
+            result += '\n';
+          }
+        }
+      }
+      
+      result += char;
+      i++;
+    }
+    
+    // Clean up: remove multiple consecutive newlines
+    result = result.replace(/\n{3,}/g, '\n\n');
+    
+    // Trim each line and apply basic indentation
+    const formattedLines = result.split('\n');
+    let indentLevel = 0;
+    const indentedLines: string[] = [];
+    
+    for (let j = 0; j < formattedLines.length; j++) {
+      let line = formattedLines[j].trim();
+      if (!line) {
+        indentedLines.push('');
+        continue;
+      }
+      
+      // Decrease indent before closing braces/brackets
+      if (line.startsWith('}') || line.startsWith(']')) {
+        indentLevel = Math.max(0, indentLevel - 1);
+      }
+      
+      // Add indented line
+      indentedLines.push('  '.repeat(indentLevel) + line);
+      
+      // Increase indent after opening braces/brackets
+      if (line.endsWith('{') || line.endsWith('[')) {
+        indentLevel++;
+      }
+    }
+    
+    return indentedLines.join('\n');
   }
 
   /**

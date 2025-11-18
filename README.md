@@ -1,114 +1,139 @@
-# N8N to Lamatic Serverless Migration Tool
+# N8N to Lamatic Migration Tool
 
-A production-ready migration tool that converts N8N workflows to Lamatic format with intelligent node mapping, dependency analysis, and seamless user experience.
+A production-ready Next.js application that converts n8n workflows to Lamatic format with intelligent node mapping, dependency analysis, and automated conversion.
 
-## 🚀 Features
+## Features
 
-### Core Migration Capabilities
 - **File Upload**: Drag & drop n8n JSON files for instant conversion
-- **Intelligent Node Mapping**: Deterministic mapping of n8n nodes to Lamatic equivalents
+- **Intelligent Node Mapping**: Deterministic mapping of 40+ n8n node types to Lamatic equivalents
 - **Dependency Analysis**: Converts n8n connections to Lamatic dependency structure
 - **Real-time Progress**: Live migration progress with detailed step tracking
 - **Migration Reports**: Comprehensive analytics and conversion statistics
+- **Error Handling**: Graceful error handling with detailed warnings and error messages
 
-### User Experience
-- **Lamatic-Inspired Design**: Clean, modern interface with red accents and dark/light mode
-- **Dual-Path Interface**: Choose between file upload or API import (coming soon)
-- **Drag & Drop**: Easy file upload with visual feedback
-- **Error Handling**: Graceful error handling with helpful error messages
-- **Download Results**: One-click download of converted Lamatic workflows
+## Supported n8n Nodes
 
-## 📋 Supported n8n Nodes
+### Triggers (4)
+- ✅ **Webhook Trigger** (`n8n-nodes-base.webhook`)
+- ✅ **Manual Trigger** (`n8n-nodes-base.manualTrigger`)
+- ✅ **Schedule Trigger** (`n8n-nodes-base.scheduleTrigger`)
+- ✅ **Chat Trigger** (`@n8n/n8n-nodes-langchain.chatTrigger`)
 
-**Total: 19 Node Types**
+### AI & LangChain (6)
+- ✅ **Google Gemini Chat Model** (`@n8n/n8n-nodes-langchain.lmChatGoogleGemini`)
+- ✅ **OpenAI Chat Model** (`@n8n/n8n-nodes-langchain.lmChatOpenAi`)
+- ✅ **Groq Chat Model** (`@n8n/n8n-nodes-langchain.lmChatGroq`)
+- ✅ **Window Buffer Memory** (`@n8n/n8n-nodes-langchain.memoryBufferWindow`)
+- ✅ **Memory Manager** (`@n8n/n8n-nodes-langchain.memoryManager`)
+- ✅ **LangChain Agent** (`@n8n/n8n-nodes-langchain.agent`)
 
-### Triggers (3)
-- ✅ **Webhook Trigger** (`n8n-nodes-base.webhook`) - HTTP webhook endpoints
-- ✅ **Manual Trigger** (`n8n-nodes-base.manualTrigger`) - Manual workflow execution
-- ✅ **Schedule Trigger** (`n8n-nodes-base.scheduleTrigger`) - Time-based automation
-
-### AI & LangChain (3)
-- ✅ **Google Gemini Chat Model** (`@n8n/n8n-nodes-langchain.lmChatGoogleGemini`) - LLM integration
-- ✅ **Window Buffer Memory** (`@n8n/n8n-nodes-langchain.memoryBufferWindow`) - Conversation memory
-- ✅ **LangChain Agent** (`@n8n/n8n-nodes-langchain.agent`) - AI agent orchestration
+### Database & Tools (3)
+- ✅ **PostgreSQL Tool** (`n8n-nodes-base.postgresTool`)
+- ✅ **Supabase** (`n8n-nodes-base.supabase`)
+- ✅ **Airtable** (`n8n-nodes-base.airtable`)
 
 ### Integrations (9)
-- ✅ **Slack** (`n8n-nodes-base.slack`) - Slack messaging
-- ✅ **Gmail** (`n8n-nodes-base.gmail`) - Email sending and management
-- ✅ **Google Sheets** (`n8n-nodes-base.googleSheets`) - Spreadsheet operations
-- ✅ **Airtable** (`n8n-nodes-base.airtable`) - Database operations
-- ✅ **Microsoft Teams** (`n8n-nodes-base.microsoftTeams`) - Team collaboration
-- ✅ **Discord** (`n8n-nodes-base.discord`) - Bot messaging
-- ✅ **Notion** (`n8n-nodes-base.notion`) - Workspace management
-- ✅ **HTTP Request** (`n8n-nodes-base.httpRequest`) - API calls
-- ✅ **Code Node** (`n8n-nodes-base.code`) - Custom JavaScript execution
+- ✅ **Slack** (`n8n-nodes-base.slack`)
+- ✅ **Gmail** (`n8n-nodes-base.gmail`)
+- ✅ **Google Sheets** (`n8n-nodes-base.googleSheets`)
+- ✅ **Google Drive** (`n8n-nodes-base.googleDrive`)
+- ✅ **Microsoft Teams** (`n8n-nodes-base.microsoftTeams`)
+- ✅ **Notion** (`n8n-nodes-base.notion`)
+- ✅ **HTTP Request** (`n8n-nodes-base.httpRequest`)
+- ✅ **Code Node** (`n8n-nodes-base.code`)
+- ✅ **Wikipedia Tool** (`@n8n/n8n-nodes-langchain.toolWikipedia`)
 
-### Control Flow (2)
-- ✅ **If Node** (`n8n-nodes-base.if`) - Conditional logic
-- ✅ **Switch Node** (`n8n-nodes-base.switch`) - Multi-path routing
+### Control Flow (3)
+- ✅ **If Node** (`n8n-nodes-base.if`)
+- ✅ **Switch Node** (`n8n-nodes-base.switch`)
+- ✅ **Filter Node** (`n8n-nodes-base.filter`)
 
-### Data Processing (2)
-- ✅ **Set Data** (`n8n-nodes-base.set`) - Transform/set data fields
-- ✅ **Merge** (`n8n-nodes-base.merge`) - Combine multiple data sources
+### Data Processing (5)
+- ✅ **Set Data** (`n8n-nodes-base.set`)
+- ✅ **Merge** (`n8n-nodes-base.merge`)
+- ✅ **Aggregate** (`n8n-nodes-base.aggregate`)
+- ✅ **Limit** (`n8n-nodes-base.limit`)
+- ✅ **Execution Data** (`n8n-nodes-base.executionData`)
 
-## 🏗️ Architecture
+### Workflow Management (3)
+- ✅ **Execute Workflow** (`n8n-nodes-base.executeWorkflow`)
+- ✅ **Execute Workflow Trigger** (`n8n-nodes-base.executeWorkflowTrigger`)
+- ✅ **Form Trigger** (`n8n-nodes-base.formTrigger`)
 
-The migration system follows a modular architecture with clear separation of concerns:
+### File Operations (3)
+- ✅ **Read/Write File** (`n8n-nodes-base.readWriteFile`)
+- ✅ **Compression** (`n8n-nodes-base.compression`)
+- ✅ **Edit Image** (`n8n-nodes-base.editImage`)
+
+## Project Structure
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   File Upload   │───▶│     Parser      │───▶│ Mapping Engine  │
-│     Layer       │    │                 │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                                       │
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Generator     │◀───│ Dependencies    │◀───│   Validator     │
-│                 │    │   Builder       │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+n8n-migration/
+├── app/                    # Next.js application routes
+│   ├── api/               # API endpoints
+│   │   └── migrate/       # Migration API endpoint
+│   ├── layout.tsx         # Root layout
+│   └── page.tsx           # Main application page
+├── components/            # React components
+│   ├── theme-provider.tsx # Theme context provider
+│   └── theme-toggle.tsx   # Theme toggle component
+├── lib/                   # Core library code
+│   ├── migration/         # Migration engine
+│   │   ├── parser.ts      # n8n workflow parser
+│   │   ├── mapper.ts      # Node type mapper
+│   │   ├── dependencies.ts # Dependency builder
+│   │   ├── generator.ts   # Lamatic workflow generator
+│   │   ├── types.ts       # TypeScript type definitions
+│   │   ├── schemas.ts     # Lamatic node schemas
+│   │   └── schemaValidator.ts # Schema validation
+│   └── lamatic-client.ts  # Lamatic API client
+├── actions/               # Server actions
+│   └── orchestrate.ts    # Main migration orchestration
+├── package.json          # Dependencies and scripts
+├── next.config.mjs        # Next.js configuration
+├── tsconfig.json          # TypeScript configuration
+└── tailwind.config.js    # Tailwind CSS configuration
 ```
 
-### Core Components
+## Core Components
 
-1. **Parser** (`lib/migration/parser.ts`) - Extracts nodes and connections from n8n JSON
-2. **Mapper** (`lib/migration/mapper.ts`) - Converts n8n nodes to Lamatic equivalents
-3. **Dependency Builder** (`lib/migration/dependencies.ts`) - Builds workflow dependencies
-4. **Generator** (`lib/migration/generator.ts`) - Creates final Lamatic JSON
-5. **Orchestrator** (`actions/orchestrate.ts`) - Main migration pipeline
+### Parser (`lib/migration/parser.ts`)
+Extracts and validates n8n workflow structure from JSON. Handles node normalization, connection parsing, and workflow validation.
 
-## 🚀 Quick Start
+### Mapper (`lib/migration/mapper.ts`)
+Converts n8n node types to Lamatic equivalents with parameter and credential mappings. Supports 40+ node types with intelligent parameter transformation.
+
+### Dependency Builder (`lib/migration/dependencies.ts`)
+Builds workflow dependency structure from n8n connections. Handles special AI connection types (`ai_tool`, `ai_memory`, `ai_languageModel`) and calculates execution order.
+
+### Generator (`lib/migration/generator.ts`)
+Creates final Lamatic workflow JSON with proper structure, connections, and metadata. Validates node references and formats output.
+
+### Orchestrator (`actions/orchestrate.ts`)
+Main migration pipeline that coordinates parsing, mapping, dependency building, and generation. Handles error recovery and progress tracking.
+
+## Quick Start
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 18+ 
 - npm or yarn
 
 ### Installation
 
-1. **Navigate to the migration tool**
-   ```bash
-   cd templates/embed/n8n-migration
-   ```
+```bash
+# Install dependencies
+npm install
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+# Start development server
+npm run dev
 
-3. **Start development server**
-   ```bash
-   npm run dev
-   ```
+# Open in browser
+# http://localhost:3000
+```
 
-4. **Open in browser**
-   ```
-   http://localhost:3000
-   ```
-
-## 📖 Usage
-
-### File Upload Path
+### Usage
 
 1. **Upload n8n Workflow**
-   - Click "Upload File" on the main page
    - Drag & drop your n8n JSON file
    - Or click to browse and select a file
 
@@ -121,38 +146,21 @@ The migration system follows a modular architecture with clear separation of con
    - Check for any warnings or errors
    - Download the converted Lamatic workflow
 
-### API Import Path (Coming Soon)
-
-1. **Connect to n8n Instance**
-   - Enter your n8n instance URL
-   - Provide API key for authentication
-   - Test the connection
-
-2. **Select Workflows**
-   - Browse available workflows
-   - Select which ones to migrate
-   - Configure migration options
-
-3. **Batch Import**
-   - Process multiple workflows at once
-   - Get comprehensive migration reports
-   - Download all converted workflows
-
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
 Create a `.env.local` file:
 
 ```bash
-# Lamatic API Configuration
+# Lamatic API Configuration (optional)
 LAMATIC_API_KEY=your_lamatic_api_key
 LAMATIC_ENDPOINT=https://api.lamatic.ai
 LAMATIC_PROJECT_ID=migration-tool
 
 # Migration Settings
 MAX_FILE_SIZE=10485760  # 10MB in bytes
-SUPPORTED_FILE_TYPES=.json
+NODE_ENV=development
 ```
 
 ### API Configuration
@@ -163,20 +171,14 @@ SUPPORTED_FILE_TYPES=.json
    - Generate API key
 
 2. **Configure Settings**
-   - Add your API key to environment variables
+   - Add your API key to `.env.local`
    - Test the connection
 
-## 🚀 Deployment
+## Deployment
 
 ### Deploy to Vercel
 
-The easiest way to deploy this application is using Vercel:
-
-> ✅ **Private repositories work perfectly!** When you connect GitHub to Vercel, you'll authorize access to your private repo. No code changes needed.
-
-#### Quick Deploy (Recommended)
-
-1. **Push to GitHub** (private repo is fine!)
+1. **Push to GitHub**
    ```bash
    git add .
    git commit -m "Ready for deployment"
@@ -186,29 +188,23 @@ The easiest way to deploy this application is using Vercel:
 2. **Import to Vercel**
    - Go to [vercel.com](https://vercel.com)
    - Sign in with GitHub
-   - **First time?** Authorize Vercel to access your repositories (select your private repo)
    - Click "Add New Project"
-   - Import your GitHub repository
-   - Set root directory to `templates/embed/n8n-migration` (if deploying from repo root)
+   - Import your repository
 
 3. **Configure Environment Variables**
    - Add all variables from `env.example`
    - Set `NODE_ENV=production`
-   - Add your `LAMATIC_API_KEY`
-   - Set `LAMATIC_PROJECT_ID` (default: `migration-tool`)
+   - Add your `LAMATIC_API_KEY` (if using)
 
 4. **Deploy**
    - Click "Deploy"
-   - Your app will be live in minutes!
+   - Your app will be live in minutes
 
-#### Using Vercel CLI
+### Using Vercel CLI
 
 ```bash
 # Install Vercel CLI
 npm i -g vercel
-
-# Navigate to project
-cd templates/embed/n8n-migration
 
 # Deploy
 vercel
@@ -216,13 +212,10 @@ vercel
 # Set environment variables
 vercel env add LAMATIC_API_KEY
 vercel env add LAMATIC_ENDPOINT
-# ... add other variables
 
 # Deploy to production
 vercel --prod
 ```
-
-📖 **For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md)**
 
 ### Other Platforms
 
@@ -233,43 +226,45 @@ This is a standard Next.js application and can be deployed to:
 - **Railway** - Simple container deployment
 - **Docker** - Container-based deployment
 
-## 🧪 Testing
+## Development
 
-### Test with Sample Workflow
+### Adding New Node Mappings
 
-The repository includes a sample n8n workflow for testing:
+1. **Update mapping engine** (`lib/migration/mapper.ts`)
+   ```typescript
+   this.addMapping({
+     n8nType: 'n8n-nodes-base.newNode',
+     lamaticType: 'lamatic_equivalent',
+     isSupported: true,
+     parameterMappings: [
+       { n8nParameter: 'param1', lamaticParameter: 'param1', required: true }
+     ],
+     credentialMappings: [
+       { n8nCredential: 'cred1', lamaticCredential: 'cred1', requiresReauth: true }
+     ],
+     notes: 'Description of the mapping'
+   });
+   ```
 
-```bash
-# Sample workflow location
-public/sample-n8n-workflow.json
+2. **Add node creation logic** in `createLamaticNode()` method
+3. **Update schemas** (`lib/migration/schemas.ts`) if needed
+4. **Test with your own n8n workflow**
+
+### Architecture
+
+The migration system follows a modular pipeline:
+
+```
+File Upload → Parser → Mapper → Dependency Builder → Generator → Output
 ```
 
-### Test Migration Flow
+Each component is independently testable and handles specific responsibilities:
+- **Parser**: Validates and normalizes n8n structure
+- **Mapper**: Converts node types and parameters
+- **Dependency Builder**: Resolves connections and execution order
+- **Generator**: Creates final Lamatic JSON structure
 
-1. **Upload Sample Workflow**
-   - Use the provided sample workflow
-   - Test the complete migration process
-
-2. **Verify Conversion**
-   - Check node mappings
-   - Validate dependencies
-   - Review generated Lamatic workflow
-
-## 🎨 Design System
-
-### Lamatic Brand Colors
-- **Primary Red**: `#FF3B30` (Lamatic brand red)
-- **Dark Mode**: `#1a1a1a` (dark header)
-- **Light Mode**: `#ffffff` (clean white)
-- **Accent Yellow**: `#FFD700` (top-left highlight)
-
-### UI Components
-- **Compliance Badge**: SOC2 & GDPR compliant indicator
-- **Primary Buttons**: Red accent with rounded corners
-- **Secondary Buttons**: Outlined with hover effects
-- **Grid Background**: Subtle pattern for visual depth
-
-## 🚨 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -288,6 +283,10 @@ public/sample-n8n-workflow.json
    - Verify n8n workflow is valid
    - Try with simpler workflow first
 
+4. **"No trigger node found"**
+   - Ensure workflow contains a valid trigger node
+   - Supported triggers: webhook, manual, schedule, chatTrigger
+
 ### Debug Mode
 
 Enable debug logging:
@@ -298,14 +297,15 @@ NODE_ENV=development npm run dev
 
 Check browser console for detailed error messages.
 
-## 📚 API Reference
+## API Reference
 
 ### Migration Pipeline
 
 ```typescript
-import { migrationPipeline } from '@/actions/orchestrate';
+import { processMigration } from '@/actions/orchestrate';
 
-const result = await migrationPipeline.process(file);
+const result = await processMigration(file);
+// Returns: MigrationResult with success status, nodes, and workflow
 ```
 
 ### Individual Components
@@ -313,77 +313,46 @@ const result = await migrationPipeline.process(file);
 ```typescript
 // Parse n8n workflow
 import { N8nParser } from '@/lib/migration/parser';
+const parser = new N8nParser();
+const workflow = parser.parseWorkflow(jsonContent);
 
 // Map nodes to Lamatic
 import { NodeMapper } from '@/lib/migration/mapper';
+const mapper = new NodeMapper();
+const result = mapper.mapNode(n8nNode, nodeId);
 
 // Build dependencies
 import { DependencyBuilder } from '@/lib/migration/dependencies';
+const builder = new DependencyBuilder();
+const deps = builder.buildDependencies(workflow, nodes);
 
 // Generate Lamatic workflow
 import { LamaticOutputGenerator } from '@/lib/migration/generator';
+const generator = new LamaticOutputGenerator();
+const lamaticWorkflow = generator.generateWorkflow(nodes, workflow, metadata, connections);
 ```
 
-## 🤝 Contributing
+## License
 
-### Development Setup
+This project is licensed under the MIT License.
 
-1. **Fork the repository**
-2. **Create feature branch**
-   ```bash
-   git checkout -b feature/new-node-mapping
-   ```
-3. **Make changes**
-4. **Test thoroughly**
-5. **Submit pull request**
-
-### Adding New Node Mappings
-
-1. **Update mapping engine**
-   ```typescript
-   // lib/migration/mapper.ts
-   this.addMapping({
-     n8nType: 'n8n-nodes-base.newNode',
-     lamaticType: 'lamatic_equivalent',
-     isSupported: true,
-     parameterMappings: [...],
-     credentialMappings: [...]
-   });
-   ```
-
-2. **Add parameter mappings**
-3. **Update schemas**
-4. **Test with sample workflow**
-5. **Update documentation**
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](../../LICENSE) file for details.
-
-## 🆘 Support
+## Support
 
 ### Getting Help
 
 1. **Check Documentation**
-   - This README
    - Code comments and type definitions
+   - Component documentation
 
-2. **Test with Sample**
-   - Use provided sample workflow
-   - Verify basic functionality
-
-3. **Check Issues**
-   - Look for similar issues
-   - Create new issue if needed
+2. **Test Your Workflow**
+   - Upload your own n8n workflow JSON file
+   - Verify the migration works correctly
 
 ### Resources
 
 - [Lamatic Documentation](https://lamatic.ai/docs)
 - [n8n Documentation](https://docs.n8n.io/)
-- [AgentKit Repository](https://github.com/Lamatic/AgentKit)
 
 ---
 
 **Happy Migrating! 🚀**
-
-This migration tool makes it easy to move your n8n workflows to Lamatic while maintaining functionality and providing a smooth user experience.

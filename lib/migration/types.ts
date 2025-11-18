@@ -1,8 +1,14 @@
 /**
- * Type definitions for n8n to Lamatic migration
+ * Type definitions for n8n to Lamatic migration.
+ * 
+ * Defines the structure of n8n workflows, Lamatic workflows, and migration
+ * result types used throughout the migration pipeline.
  */
 
-// n8n workflow structure
+/**
+ * n8n workflow structure as exported from n8n.
+ * Represents the source format that will be converted to Lamatic.
+ */
 export interface N8nWorkflow {
   name: string;
   nodes: N8nNode[];
@@ -15,7 +21,10 @@ export interface N8nWorkflow {
   tags?: string[];
 }
 
-// n8n node structure
+/**
+ * n8n node structure representing a single workflow node.
+ * Each node has a type, parameters, position, and optional webhook ID.
+ */
 export interface N8nNode {
   id: string;
   name: string;
@@ -26,15 +35,26 @@ export interface N8nNode {
   webhookId?: string;
 }
 
-// n8n connection structure
+/**
+ * n8n connection structure representing a connection between nodes.
+ * 
+ * @property node - Target node name (not ID, as n8n uses names in connections)
+ * @property type - Connection type: 'main', 'ai_memory', 'ai_languageModel', 'ai_tool', etc.
+ * @property index - Input index on target node
+ * @property outputIndex - Output branch index for switch/if nodes (0=first branch, 1=second, etc.)
+ */
 export interface N8nConnection {
   node: string;
   type: string;
   index: number;
-  outputIndex?: number; // For switch/if nodes: which output branch (0, 1, 2, etc.)
+  outputIndex?: number;
 }
 
-// Lamatic workflow structure
+/**
+ * Lamatic workflow structure - the target format for migration.
+ * 
+ * Contains trigger node, regular nodes, connections, and runtime metadata.
+ */
 export interface LamaticWorkflow {
   name: string;
   description?: string;
@@ -45,7 +65,16 @@ export interface LamaticWorkflow {
   '_flowMetadata'?: Record<string, any>;
 }
 
-// Lamatic node structure
+/**
+ * Lamatic node structure representing a single workflow node in Lamatic format.
+ * 
+ * @property nodeId - Unique identifier for the node
+ * @property nodeType - Type of node (e.g., 'webhookTriggerNode', 'LLMNode', 'agentNode')
+ * @property nodeName - Human-readable node name
+ * @property values - Node configuration values (type-specific)
+ * @property modes - Node execution modes
+ * @property needs - Array of node IDs this node depends on (execution order)
+ */
 export interface LamaticNode {
   nodeId: string;
   nodeType: string;
@@ -57,7 +86,12 @@ export interface LamaticNode {
   '_flowMetadata'?: Record<string, any>;
 }
 
-// Lamatic connection structure
+/**
+ * Lamatic connection structure organizing connections by port type.
+ * 
+ * Connections are grouped by port type (main, ai_memory, etc.) and organized
+ * as nested arrays: portType -> [output0[], output1[], ...]
+ */
 export interface LamaticConnection {
   flowType: string;
   executionOrder: number;
@@ -72,7 +106,9 @@ export interface LamaticConnectionDetail {
   flowContext?: string;
 }
 
-// Migration result types
+/**
+ * Result of a migration operation containing success status, statistics, and the converted workflow.
+ */
 export interface MigrationResult {
   success: boolean;
   totalNodes: number;
@@ -103,7 +139,10 @@ export interface NodeMigrationResult {
   requiresReauth: boolean;
 }
 
-// Migration progress types
+/**
+ * Progress information for a migration operation.
+ * Used for real-time progress tracking during migration.
+ */
 export interface MigrationProgress {
   currentStep: MigrationStep;
   progress: number;
@@ -120,7 +159,11 @@ export type MigrationStep =
   | 'complete'
   | 'error';
 
-// Node mapping types
+/**
+ * Mapping definition for converting an n8n node type to a Lamatic node type.
+ * 
+ * Defines parameter mappings, credential mappings, and support status.
+ */
 export interface NodeMapping {
   n8nType: string;
   lamaticType: string;
