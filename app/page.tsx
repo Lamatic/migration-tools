@@ -1073,6 +1073,7 @@ export default function MigrationTool() {
   const [originalFileName, setOriginalFileName] = useState<string>('');
   const [pastedJson, setPastedJson] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
   // Testimonials data
   const testimonials = [
     {
@@ -1252,7 +1253,7 @@ export default function MigrationTool() {
             </div>
 
             {/* Navigation */}
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
               <a
                 href="https://lamatic.ai/docs"
                 target="_blank"
@@ -1271,6 +1272,7 @@ export default function MigrationTool() {
                 <Github className="w-3.5 h-3.5" />
                 GitHub
               </a>
+              
               <ThemeToggle />
             </div>
           </div>

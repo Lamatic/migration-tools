@@ -43,6 +43,11 @@ export class DependencyBuilder {
     // Ensure all nodes in needs arrays have corresponding connections
     this.validateConnectionsConsistency(nodesWithDependencies, connections, warnings);
     
+    // CRITICAL: Ensure all nodes are reachable from trigger
+    // This validates that every node has a path from the trigger node
+    // Also updates connections object when fixing dependencies
+    this.validateAllNodesReachable(nodesWithDependencies, nodeIdMap, n8nWorkflow, connections, warnings);
+    
     // CRITICAL: Break cycles caused by splitInBatches loop-backs
     // This must be done BEFORE calculating execution order
     this.breakSplitInBatchesCycles(nodesWithDependencies, n8nWorkflow, nodeIdMap);
@@ -1597,6 +1602,163 @@ export class DependencyBuilder {
    * Ensures all dependencies are properly reflected in connections object
    * CRITICAL: Special handling for branch nodes to ensure all outputs are connected
    */
+  /**
+   * Validates that all nodes are reachable from the trigger node
+   * Ensures the workflow has a complete path from start to end
+   * Also updates connections object when fixing dependencies
+   */
+  private validateAllNodesReachable(
+    nodes: LamaticNode[],
+    nodeIdMap: Map<string, string>,
+    n8nWorkflow: N8nWorkflow,
+    connections: Record<string, LamaticConnection>,
+    warnings: string[]
+  ): void {
+    // Find trigger node
+    // Supports both webhookTriggerNode and chatTriggerNode
+    const triggerNode = nodes.find(n => 
+      n.nodeType === 'webhookTriggerNode' || 
+      n.nodeType === 'chatTriggerNode' ||
+      n.nodeType === 'scheduleTriggerNode' ||
+      n.nodeType === 'formTriggerNode'
+    );
+    
+    if (!triggerNode) {
+      warnings.push('No trigger node found - cannot validate reachability');
+      return;
+    }
+    
+    // Build graph: nodeId -> [nodes it connects to]
+    const graph = new Map<string, Set<string>>();
+    const allNodeIds = new Set(nodes.map(n => n.nodeId));
+    allNodeIds.add(triggerNode.nodeId);
+    
+    // Initialize graph
+    for (const nodeId of Array.from(allNodeIds)) {
+      graph.set(nodeId, new Set());
+    }
+    
+    // Build graph from needs arrays (reverse direction)
+    // If A needs B, then B -> A in the graph
+    for (const node of nodes) {
+      for (const depId of node.needs || []) {
+        if (allNodeIds.has(depId)) {
+          graph.get(depId)!.add(node.nodeId);
+        }
+      }
+    }
+    
+    // Also build from n8n connections to catch any missing dependencies
+    for (const [sourceName, connArray] of Object.entries(n8nWorkflow.connections)) {
+      if (Array.isArray(connArray)) {
+        for (const conn of connArray) {
+          if (!conn || !conn.node) continue;
+          
+          const sourceN8nId = n8nWorkflow.nodes.find(n => n.name === sourceName)?.id;
+          const targetN8nId = n8nWorkflow.nodes.find(n => n.name === conn.node)?.id;
+          
+          if (sourceN8nId && targetN8nId) {
+            const sourceLamaticId = nodeIdMap.get(sourceN8nId);
+            const targetLamaticId = nodeIdMap.get(targetN8nId);
+            
+            if (sourceLamaticId && targetLamaticId && allNodeIds.has(sourceLamaticId) && allNodeIds.has(targetLamaticId)) {
+              graph.get(sourceLamaticId)!.add(targetLamaticId);
+            }
+          }
+        }
+      }
+    }
+    
+    // BFS from trigger to find all reachable nodes
+    const visited = new Set<string>();
+    const queue: string[] = [triggerNode.nodeId];
+    visited.add(triggerNode.nodeId);
+    
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const neighbors = graph.get(current) || new Set();
+      
+      for (const neighbor of Array.from(neighbors)) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+    }
+    
+    // Check for unreachable nodes
+    const unreachable = Array.from(allNodeIds).filter(id => !visited.has(id));
+    if (unreachable.length > 0) {
+      const unreachableNames = unreachable.map(id => {
+        const node = nodes.find(n => n.nodeId === id);
+        return node ? `${node.nodeName} (${id})` : id;
+      });
+      warnings.push(`Found ${unreachable.length} unreachable node(s) from trigger: ${unreachableNames.join(', ')}`);
+      
+      // Try to fix by finding their dependencies in n8n connections
+      for (const unreachableId of unreachable) {
+        const node = nodes.find(n => n.nodeId === unreachableId);
+        if (!node) continue;
+        
+        // Find n8n node
+        const n8nNode = n8nWorkflow.nodes.find(n => {
+          const mappedId = nodeIdMap.get(n.id);
+          return mappedId === unreachableId;
+        });
+        
+        if (n8nNode) {
+          // Find what connects to this node in n8n
+          for (const [sourceName, connArray] of Object.entries(n8nWorkflow.connections)) {
+            if (Array.isArray(connArray)) {
+              for (const conn of connArray) {
+                if (conn && conn.node === n8nNode.name) {
+                  const sourceN8nId = n8nWorkflow.nodes.find(n => n.name === sourceName)?.id;
+                  if (sourceN8nId) {
+                    const sourceLamaticId = nodeIdMap.get(sourceN8nId);
+                    if (sourceLamaticId && visited.has(sourceLamaticId)) {
+                      // Found a path! Add the missing dependency
+                      if (!node.needs.includes(sourceLamaticId)) {
+                        node.needs.push(sourceLamaticId);
+                        warnings.push(`Fixed: Added missing dependency from ${unreachableId} to ${sourceLamaticId}`);
+                        
+                        // CRITICAL: Also update connections object to reflect this dependency
+                        if (!connections[sourceLamaticId]) {
+                          connections[sourceLamaticId] = {
+                            flowType: 'linear',
+                            executionOrder: 0,
+                            connections: {}
+                          };
+                        }
+                        if (!connections[sourceLamaticId].connections.main) {
+                          connections[sourceLamaticId].connections.main = [];
+                        }
+                        // Ensure main[0] exists
+                        if (!connections[sourceLamaticId].connections.main[0]) {
+                          connections[sourceLamaticId].connections.main[0] = [];
+                        }
+                        // Add connection if not already present
+                        const existingConn = connections[sourceLamaticId].connections.main[0].find(
+                          (c: any) => c.nodeId === unreachableId
+                        );
+                        if (!existingConn) {
+                          connections[sourceLamaticId].connections.main[0].push({
+                            nodeId: unreachableId,
+                            type: 'main',
+                            index: 0
+                          });
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   private validateConnectionsConsistency(
     nodes: LamaticNode[],
     connections: Record<string, LamaticConnection>,
